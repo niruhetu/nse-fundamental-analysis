@@ -109,7 +109,7 @@ try:
     filings = nse_client.fetch_financials(
         symbol,
         stock_name,
-        max_filings=8
+        max_filings=12
     )
 
 except Exception as e:
