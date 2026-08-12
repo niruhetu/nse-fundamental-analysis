@@ -18,7 +18,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install gspread oauth2client
+          pip install gspread oauth2client nse-xbrl
 
       - name: Run Fundamental Analysis
         env:
