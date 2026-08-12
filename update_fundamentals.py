@@ -123,7 +123,18 @@ if not filings:
     print("ERROR: No NSE filings found")
     raise SystemExit(1)
 
-print("Filings found:", len(filings))
+print("========== FILING LIST ==========")
+
+for i, filing in enumerate(filings, start=1):
+    print(
+        i,
+        "Period:",
+        getattr(filing, "period_end", None),
+        "Consolidated:",
+        getattr(filing, "is_consolidated", None)
+    )
+
+print("=================================")
 
 
 # ============================================================
