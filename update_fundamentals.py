@@ -168,48 +168,33 @@ quarterly_sheet.update(
 # UPDATE FUNDAMENTAL ANALYSIS SHEET
 # ============================================================
 
-fundamental_sheet.update("E2", [[
-    "Latest NSE result"
-]])
 
-fundamental_sheet.update("F2", [[
-    str(period_end) if period_end else ""
-]])
 
-# Revenue Growth
-fundamental_sheet.update("G2", [[
-    ""
-]])
+fundamental_sheet.update(
+    range_name="E2:F2",
+    values=[[
+        "Latest NSE result",
+        str(period_end) if period_end else ""
+    ]]
+)
 
-# Profit Growth
-fundamental_sheet.update("H2", [[
-    ""
-]])
+fundamental_sheet.update(
+    range_name="M2",
+    values=[[operating_margin if operating_margin is not None else ""]]
+)
 
-# EPS Growth
-fundamental_sheet.update("I2", [[
-    ""
-]])
+fundamental_sheet.update(
+    range_name="Q2",
+    values=[[eps if eps is not None else ""]]
+)
 
-# EPS
-fundamental_sheet.update("Q2", [[
-    eps if eps is not None else ""
-]])
+fundamental_sheet.update(
+    range_name="Y2:Z2",
+    values=[[
+        revenue if revenue is not None else "",
+        profit if profit is not None else ""
+    ]]
+)
 
-# Quarterly Sales
-fundamental_sheet.update("Y2", [[
-    revenue if revenue is not None else ""
-]])
-
-# Quarterly Profit
-fundamental_sheet.update("Z2", [[
-    profit if profit is not None else ""
-]])
-
-# Operating Margin
-fundamental_sheet.update("M2", [[
-    operating_margin if operating_margin is not None else ""
-]])
-
-print("SUCCESS: Latest NSE result written to Google Sheet.")
+print("SUCCESS: Fundamental Analysis updated.")
 print("SUCCESS: Quarterly Results updated.")
