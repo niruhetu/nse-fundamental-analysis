@@ -198,3 +198,8 @@ fundamental_sheet.update(
 
 print("SUCCESS: Fundamental Analysis updated.")
 print("SUCCESS: Quarterly Results updated.")
+# DIRECT WRITE TEST
+fundamental_sheet.update_cell(2, 5, "TEST")
+fundamental_sheet.update_cell(2, 6, "TEST DATE")
+
+print("TEST: Fundamental Analysis E2 and F2 updated.")
