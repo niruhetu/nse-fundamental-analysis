@@ -1,14 +1,18 @@
 import os
 import json
+from datetime import datetime
+
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from nse_xbrl import NSEClient
+
 
 # ============================================================
 # SETTINGS
 # ============================================================
 
 SPREADSHEET_ID = "1Z4dAZIKKHKm9bg8i8-OI6Cka_vz3YSGFGp6PykxpnHw"
+
 
 # ============================================================
 # GOOGLE SHEET CONNECTION
@@ -18,14 +22,14 @@ creds_json = os.environ.get("GCP_CREDENTIALS")
 
 if not creds_json:
     print("ERROR: GCP_CREDENTIALS secret is missing!")
-    exit(1)
+    raise SystemExit(1)
 
 try:
     creds_dict = json.loads(creds_json)
 except Exception as e:
-    print("ERROR: Could not read GCP_CREDENTIALS.")
+    print("ERROR: Cannot read GCP_CREDENTIALS")
     print(e)
-    exit(1)
+    raise SystemExit(1)
 
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -41,31 +45,77 @@ client = gspread.authorize(credentials)
 
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-fundamental_sheet = spreadsheet.worksheet("Fundamental Analysis")
-quarterly_sheet = spreadsheet.worksheet("Quarterly Results")
+print("Google Sheet connected:", spreadsheet.title)
+
 
 # ============================================================
-# READ STOCK FROM GOOGLE SHEET
+# FIND WORKSHEETS SAFELY
+# ============================================================
+
+worksheets = spreadsheet.worksheets()
+
+fundamental_sheet = None
+quarterly_sheet = None
+
+for ws in worksheets:
+    print("Found worksheet:", repr(ws.title), "ID:", ws.id)
+
+    clean_name = ws.title.strip().lower()
+
+    if clean_name == "fundamental analysis":
+        fundamental_sheet = ws
+
+    if clean_name == "quarterly results":
+        quarterly_sheet = ws
+
+if fundamental_sheet is None:
+    print("ERROR: Fundamental Analysis worksheet not found!")
+    raise SystemExit(1)
+
+if quarterly_sheet is None:
+    print("ERROR: Quarterly Results worksheet not found!")
+    raise SystemExit(1)
+
+print("Using Fundamental Analysis:", fundamental_sheet.title)
+print("Using Quarterly Results:", quarterly_sheet.title)
+
+
+# ============================================================
+# READ STOCK FROM FUNDAMENTAL ANALYSIS
 # ============================================================
 
 stock_name = fundamental_sheet.acell("A2").value
 nse_code = fundamental_sheet.acell("B2").value
 
 if not stock_name:
-    print("ERROR: Stock name is missing in A2.")
-    exit(1)
+    print("ERROR: A2 is empty.")
+    raise SystemExit(1)
 
 if not nse_code:
-    print("ERROR: NSE code is missing in B2.")
-    exit(1)
+    print("ERROR: B2 is empty.")
+    raise SystemExit(1)
 
 symbol = nse_code.upper().replace("NSE:", "").strip()
 
-print("Stock:", stock_name)
+print("Stock Name:", stock_name)
 print("NSE Symbol:", symbol)
 
+
 # ============================================================
-# FETCH NSE INTEGRATED FINANCIAL FILINGS
+# DIRECT SHEET WRITE TEST
+# ============================================================
+
+fundamental_sheet.update_cell(
+    3,
+    1,
+    "GitHub update: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+)
+
+print("DIRECT WRITE TEST SUCCESSFUL")
+
+
+# ============================================================
+# FETCH NSE FINANCIAL FILINGS
 # ============================================================
 
 try:
@@ -78,51 +128,66 @@ try:
     )
 
 except Exception as e:
-    print("ERROR: Could not fetch NSE financial filings.")
+    print("ERROR: NSE financial fetch failed.")
     print(e)
-    exit(1)
+    raise SystemExit(1)
 
 if not filings:
-    print("ERROR: No financial filings found.")
-    exit(1)
+    print("ERROR: No NSE filings found.")
+    raise SystemExit(1)
 
-print("Number of filings found:", len(filings))
+print("NSE filings found:", len(filings))
 
-# ============================================================
-# SELECT LATEST CONSOLIDATED FILING
-# ============================================================
-
-selected = None
-
-for filing in filings:
-    if getattr(filing, "is_consolidated", False):
-        selected = filing
-        break
-
-if selected is None:
-    selected = filings[0]
 
 # ============================================================
-# LATEST RESULT VALUES
+# SELECT LATEST FILING
+# Prefer consolidated when available
 # ============================================================
+
+consolidated_filings = [
+    f for f in filings
+    if getattr(f, "is_consolidated", False)
+]
+
+if consolidated_filings:
+    usable_filings = consolidated_filings
+else:
+    usable_filings = filings
+
+
+def filing_date(filing):
+    value = getattr(filing, "period_end", None)
+
+    if value is None:
+        return ""
+
+    return str(value)
+
+
+usable_filings = sorted(
+    usable_filings,
+    key=filing_date,
+    reverse=True
+)
+
+selected = usable_filings[0]
 
 period_end = getattr(selected, "period_end", None)
 
 revenue = getattr(selected, "q_revenue", None)
 profit = getattr(selected, "q_pat", None)
 eps = getattr(selected, "q_diluted_eps", None)
-
 ebitda = getattr(selected, "q_ebitda", None)
-ebit = getattr(selected, "q_ebit", None)
 
-print("Latest quarter:", period_end)
+print("Selected period:", period_end)
 print("Revenue:", revenue)
 print("Profit:", profit)
 print("EPS:", eps)
 print("EBITDA:", ebitda)
 
+
 # ============================================================
-# CALCULATE OPERATING MARGIN
+# OPERATING MARGIN
 # ============================================================
 
 operating_margin = None
@@ -130,17 +195,32 @@ operating_margin = None
 if revenue not in (None, 0) and ebitda is not None:
     operating_margin = (ebitda / revenue) * 100
 
+
 # ============================================================
-# WRITE LATEST RESULT TO QUARTERLY RESULTS
+# UPDATE QUARTERLY RESULTS
+# WITHOUT DUPLICATING SAME STOCK + PERIOD
 # ============================================================
 
-headers = quarterly_sheet.row_values(1)
+all_rows = quarterly_sheet.get_all_values()
 
-# Find next empty row
-all_values = quarterly_sheet.get_all_values()
-next_row = len(all_values) + 1
+matching_rows = []
 
-row_data = [
+for row_number, row in enumerate(all_rows[1:], start=2):
+
+    if len(row) < 3:
+        continue
+
+    row_symbol = row[0].strip().upper()
+    row_period = row[2].strip()
+
+    if (
+        row_symbol == symbol
+        and row_period == str(period_end)
+    ):
+        matching_rows.append(row_number)
+
+
+quarterly_row = [
     symbol,
     stock_name,
     str(period_end) if period_end else "",
@@ -159,47 +239,99 @@ row_data = [
     "NSE Integrated Filing"
 ]
 
-quarterly_sheet.update(
-    f"A{next_row}:P{next_row}",
-    [row_data]
-)
+
+if matching_rows:
+
+    # Update the first matching row
+    target_row = matching_rows[0]
+
+    quarterly_sheet.update(
+        f"A{target_row}:P{target_row}",
+        [quarterly_row]
+    )
+
+    print(
+        "Updated existing Quarterly Results row:",
+        target_row
+    )
+
+    # Delete duplicate matching rows
+    for duplicate_row in reversed(matching_rows[1:]):
+        quarterly_sheet.delete_rows(duplicate_row)
+        print(
+            "Deleted duplicate Quarterly Results row:",
+            duplicate_row
+        )
+
+else:
+
+    next_row = len(quarterly_sheet.get_all_values()) + 1
+
+    quarterly_sheet.update(
+        f"A{next_row}:P{next_row}",
+        [quarterly_row]
+    )
+
+    print(
+        "Added new Quarterly Results row:",
+        next_row
+    )
+
 
 # ============================================================
-# UPDATE FUNDAMENTAL ANALYSIS SHEET
+# UPDATE FUNDAMENTAL ANALYSIS
 # ============================================================
 
-
-
-fundamental_sheet.update(
-    range_name="E2:F2",
-    values=[[
-        "Latest NSE result",
-        str(period_end) if period_end else ""
-    ]]
+fundamental_sheet.update_cell(
+    2,
+    5,
+    "Latest NSE Result"
 )
 
-fundamental_sheet.update(
-    range_name="M2",
-    values=[[operating_margin if operating_margin is not None else ""]]
+fundamental_sheet.update_cell(
+    2,
+    6,
+    str(period_end) if period_end else ""
 )
 
-fundamental_sheet.update(
-    range_name="Q2",
-    values=[[eps if eps is not None else ""]]
+fundamental_sheet.update_cell(
+    2,
+    13,
+    operating_margin if operating_margin is not None else ""
 )
 
-fundamental_sheet.update(
-    range_name="Y2:Z2",
-    values=[[
-        revenue if revenue is not None else "",
-        profit if profit is not None else ""
-    ]]
+fundamental_sheet.update_cell(
+    2,
+    17,
+    eps if eps is not None else ""
 )
 
-print("SUCCESS: Fundamental Analysis updated.")
-print("SUCCESS: Quarterly Results updated.")
-# DIRECT WRITE TEST
-fundamental_sheet.update_cell(2, 5, "TEST")
-fundamental_sheet.update_cell(2, 6, "TEST DATE")
+fundamental_sheet.update_cell(
+    2,
+    25,
+    revenue if revenue is not None else ""
+)
 
-print("TEST: Fundamental Analysis E2 and F2 updated.")
+fundamental_sheet.update_cell(
+    2,
+    26,
+    profit if profit is not None else ""
+)
+
+
+# ============================================================
+# FINAL STATUS
+# ============================================================
+
+fundamental_sheet.update_cell(
+    3,
+    1,
+    "Fundamental Analysis updated successfully"
+)
+
+print("==========================================")
+print("SUCCESS")
+print("Fundamental Analysis updated")
+print("Quarterly Results updated")
+print("Duplicate results handled")
+print("==========================================")
