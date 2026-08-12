@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime
+from datetime import datetime, date
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -49,24 +49,24 @@ print("Google Sheet connected:", spreadsheet.title)
 
 
 # ============================================================
-# FIND WORKSHEETS SAFELY
+# FIND WORKSHEETS
 # ============================================================
-
-worksheets = spreadsheet.worksheets()
 
 fundamental_sheet = None
 quarterly_sheet = None
 
-for ws in worksheets:
-    print("Found worksheet:", repr(ws.title), "ID:", ws.id)
+for ws in spreadsheet.worksheets():
 
-    clean_name = ws.title.strip().lower()
+    print("Found worksheet:", repr(ws.title))
 
-    if clean_name == "fundamental analysis":
+    name = ws.title.strip().lower()
+
+    if name == "fundamental analysis":
         fundamental_sheet = ws
 
-    if clean_name == "quarterly results":
+    elif name == "quarterly results":
         quarterly_sheet = ws
+
 
 if fundamental_sheet is None:
     print("ERROR: Fundamental Analysis worksheet not found!")
@@ -76,114 +76,267 @@ if quarterly_sheet is None:
     print("ERROR: Quarterly Results worksheet not found!")
     raise SystemExit(1)
 
-print("Using Fundamental Analysis:", fundamental_sheet.title)
-print("Using Quarterly Results:", quarterly_sheet.title)
-
 
 # ============================================================
-# READ STOCK FROM FUNDAMENTAL ANALYSIS
+# READ STOCK
 # ============================================================
 
 stock_name = fundamental_sheet.acell("A2").value
 nse_code = fundamental_sheet.acell("B2").value
 
 if not stock_name:
-    print("ERROR: A2 is empty.")
+    print("ERROR: Stock name missing in A2")
     raise SystemExit(1)
 
 if not nse_code:
-    print("ERROR: B2 is empty.")
+    print("ERROR: NSE code missing in B2")
     raise SystemExit(1)
 
 symbol = nse_code.upper().replace("NSE:", "").strip()
 
-print("Stock Name:", stock_name)
-print("NSE Symbol:", symbol)
+print("Stock:", stock_name)
+print("Symbol:", symbol)
 
 
 # ============================================================
-# DIRECT SHEET WRITE TEST
-# ============================================================
-
-fundamental_sheet.update_cell(
-    3,
-    1,
-    "GitHub update: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-)
-
-print("DIRECT WRITE TEST SUCCESSFUL")
-
-
-# ============================================================
-# FETCH NSE FINANCIAL FILINGS
+# FETCH NSE FILINGS
 # ============================================================
 
 try:
+
     nse_client = NSEClient()
 
     filings = nse_client.fetch_financials(
         symbol,
         stock_name,
-        max_filings=4
+        max_filings=8
     )
 
 except Exception as e:
-    print("ERROR: NSE financial fetch failed.")
+
+    print("ERROR: NSE financial fetch failed")
     print(e)
     raise SystemExit(1)
 
+
 if not filings:
-    print("ERROR: No NSE filings found.")
+    print("ERROR: No NSE filings found")
     raise SystemExit(1)
 
-print("NSE filings found:", len(filings))
+print("Filings found:", len(filings))
 
 
 # ============================================================
-# SELECT LATEST FILING
-# Prefer consolidated when available
+# PREFER CONSOLIDATED FILINGS
 # ============================================================
 
-consolidated_filings = [
+consolidated = [
     f for f in filings
     if getattr(f, "is_consolidated", False)
 ]
 
-if consolidated_filings:
-    usable_filings = consolidated_filings
-else:
-    usable_filings = filings
+if consolidated:
+    filings = consolidated
 
 
-def filing_date(filing):
-    value = getattr(filing, "period_end", None)
+# ============================================================
+# DATE HELPER
+# ============================================================
+
+def get_date(value):
 
     if value is None:
-        return ""
+        return None
 
-    return str(value)
+    if isinstance(value, datetime):
+        return value.date()
+
+    if isinstance(value, date):
+        return value
+
+    text = str(value).strip()
+
+    formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d"
+    ]
+
+    for fmt in formats:
+
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            pass
+
+    return None
 
 
-usable_filings = sorted(
-    usable_filings,
-    key=filing_date,
+# ============================================================
+# SORT FILINGS
+# ============================================================
+
+valid_filings = []
+
+for filing in filings:
+
+    filing_date = get_date(
+        getattr(filing, "period_end", None)
+    )
+
+    if filing_date:
+        valid_filings.append(
+            (filing_date, filing)
+        )
+
+
+if not valid_filings:
+
+    print("ERROR: Could not identify filing dates")
+    raise SystemExit(1)
+
+
+valid_filings.sort(
+    key=lambda x: x[0],
     reverse=True
 )
 
-selected = usable_filings[0]
 
-period_end = getattr(selected, "period_end", None)
+# ============================================================
+# LATEST FILING
+# ============================================================
 
-revenue = getattr(selected, "q_revenue", None)
-profit = getattr(selected, "q_pat", None)
-eps = getattr(selected, "q_diluted_eps", None)
-ebitda = getattr(selected, "q_ebitda", None)
+latest_date, latest = valid_filings[0]
 
-print("Selected period:", period_end)
-print("Revenue:", revenue)
-print("Profit:", profit)
-print("EPS:", eps)
-print("EBITDA:", ebitda)
+latest_revenue = getattr(
+    latest,
+    "q_revenue",
+    None
+)
+
+latest_profit = getattr(
+    latest,
+    "q_pat",
+    None
+)
+
+latest_eps = getattr(
+    latest,
+    "q_diluted_eps",
+    None
+)
+
+latest_ebitda = getattr(
+    latest,
+    "q_ebitda",
+    None
+)
+
+
+print("--------------------------------")
+print("LATEST RESULT")
+print("Date:", latest_date)
+print("Revenue:", latest_revenue)
+print("Profit:", latest_profit)
+print("EPS:", latest_eps)
+print("--------------------------------")
+
+
+# ============================================================
+# FIND SAME QUARTER LAST YEAR
+# ============================================================
+
+previous_year = None
+
+for filing_date, filing in valid_filings[1:]:
+
+    if (
+        filing_date.year == latest_date.year - 1
+        and filing_date.month == latest_date.month
+    ):
+
+        previous_year = filing
+
+        print(
+            "Previous-year quarter found:",
+            filing_date
+        )
+
+        break
+
+
+# ============================================================
+# PREVIOUS YEAR VALUES
+# ============================================================
+
+previous_revenue = None
+previous_profit = None
+previous_eps = None
+
+if previous_year:
+
+    previous_revenue = getattr(
+        previous_year,
+        "q_revenue",
+        None
+    )
+
+    previous_profit = getattr(
+        previous_year,
+        "q_pat",
+        None
+    )
+
+    previous_eps = getattr(
+        previous_year,
+        "q_diluted_eps",
+        None
+    )
+
+    print("Previous Revenue:", previous_revenue)
+    print("Previous Profit:", previous_profit)
+    print("Previous EPS:", previous_eps)
+
+else:
+
+    print("WARNING: Previous-year quarter not found")
+
+
+# ============================================================
+# GROWTH FUNCTION
+# ============================================================
+
+def calculate_growth(current, previous):
+
+    if current is None or previous in (None, 0):
+        return None
+
+    return ((current - previous) / abs(previous)) * 100
+
+
+revenue_growth = calculate_growth(
+    latest_revenue,
+    previous_revenue
+)
+
+profit_growth = calculate_growth(
+    latest_profit,
+    previous_profit
+)
+
+eps_growth = calculate_growth(
+    latest_eps,
+    previous_eps
+)
+
+
+print("--------------------------------")
+print("GROWTH")
+print("Revenue Growth:", revenue_growth)
+print("Profit Growth:", profit_growth)
+print("EPS Growth:", eps_growth)
+print("--------------------------------")
 
 
 # ============================================================
@@ -192,57 +345,108 @@ print("EBITDA:", ebitda)
 
 operating_margin = None
 
-if revenue not in (None, 0) and ebitda is not None:
-    operating_margin = (ebitda / revenue) * 100
+if latest_revenue not in (None, 0) and latest_ebitda is not None:
+
+    operating_margin = (
+        latest_ebitda / latest_revenue
+    ) * 100
 
 
 # ============================================================
-# UPDATE QUARTERLY RESULTS
-# WITHOUT DUPLICATING SAME STOCK + PERIOD
+# RESULT SIGNAL
 # ============================================================
 
-all_rows = quarterly_sheet.get_all_values()
+signals = []
 
-matching_rows = []
+for value in [
+    revenue_growth,
+    profit_growth,
+    eps_growth
+]:
 
-for row_number, row in enumerate(all_rows[1:], start=2):
+    if value is not None:
 
-    if len(row) < 3:
-        continue
+        if value > 0:
+            signals.append(1)
 
-    row_symbol = row[0].strip().upper()
-    row_period = row[2].strip()
+        elif value < 0:
+            signals.append(-1)
 
-    if (
-        row_symbol == symbol
-        and row_period == str(period_end)
-    ):
-        matching_rows.append(row_number)
+        else:
+            signals.append(0)
 
+
+if signals:
+
+    signal_total = sum(signals)
+
+    if signal_total >= 2:
+        result_signal = "POSITIVE"
+
+    elif signal_total <= -2:
+        result_signal = "NEGATIVE"
+
+    else:
+        result_signal = "MIXED"
+
+else:
+
+    result_signal = "DATA NOT AVAILABLE"
+
+
+# ============================================================
+# QUARTERLY RESULTS ROW
+# ============================================================
 
 quarterly_row = [
     symbol,
     stock_name,
-    str(period_end) if period_end else "",
+    str(latest_date),
     "",
-    revenue if revenue is not None else "",
-    "",
-    profit if profit is not None else "",
-    "",
-    eps if eps is not None else "",
-    "",
-    ebitda if ebitda is not None else "",
+    latest_revenue if latest_revenue is not None else "",
+    revenue_growth if revenue_growth is not None else "",
+    latest_profit if latest_profit is not None else "",
+    profit_growth if profit_growth is not None else "",
+    latest_eps if latest_eps is not None else "",
+    eps_growth if eps_growth is not None else "",
+    latest_ebitda if latest_ebitda is not None else "",
     operating_margin if operating_margin is not None else "",
-    "",
+    result_signal,
     "",
     "",
     "NSE Integrated Filing"
 ]
 
 
+# ============================================================
+# UPDATE EXISTING QUARTERLY ROW
+# ============================================================
+
+all_rows = quarterly_sheet.get_all_values()
+
+matching_rows = []
+
+for row_number, row in enumerate(
+    all_rows[1:],
+    start=2
+):
+
+    if len(row) < 3:
+        continue
+
+    row_symbol = row[0].strip().upper()
+    row_date = row[2].strip()
+
+    if (
+        row_symbol == symbol
+        and row_date == str(latest_date)
+    ):
+
+        matching_rows.append(row_number)
+
+
 if matching_rows:
 
-    # Update the first matching row
     target_row = matching_rows[0]
 
     quarterly_sheet.update(
@@ -251,21 +455,29 @@ if matching_rows:
     )
 
     print(
-        "Updated existing Quarterly Results row:",
+        "Updated Quarterly Results row:",
         target_row
     )
 
-    # Delete duplicate matching rows
-    for duplicate_row in reversed(matching_rows[1:]):
-        quarterly_sheet.delete_rows(duplicate_row)
+    # Remove duplicates
+    for duplicate_row in reversed(
+        matching_rows[1:]
+    ):
+
+        quarterly_sheet.delete_rows(
+            duplicate_row
+        )
+
         print(
-            "Deleted duplicate Quarterly Results row:",
+            "Deleted duplicate row:",
             duplicate_row
         )
 
 else:
 
-    next_row = len(quarterly_sheet.get_all_values()) + 1
+    next_row = len(
+        quarterly_sheet.get_all_values()
+    ) + 1
 
     quarterly_sheet.update(
         f"A{next_row}:P{next_row}",
@@ -273,7 +485,7 @@ else:
     )
 
     print(
-        "Added new Quarterly Results row:",
+        "Added Quarterly Results row:",
         next_row
     )
 
@@ -291,36 +503,68 @@ fundamental_sheet.update_cell(
 fundamental_sheet.update_cell(
     2,
     6,
-    str(period_end) if period_end else ""
+    str(latest_date)
 )
 
+# Revenue Growth - G
+fundamental_sheet.update_cell(
+    2,
+    7,
+    revenue_growth if revenue_growth is not None else ""
+)
+
+# Profit Growth - H
+fundamental_sheet.update_cell(
+    2,
+    8,
+    profit_growth if profit_growth is not None else ""
+)
+
+# EPS Growth - I
+fundamental_sheet.update_cell(
+    2,
+    9,
+    eps_growth if eps_growth is not None else ""
+)
+
+# Operating Margin - M
 fundamental_sheet.update_cell(
     2,
     13,
     operating_margin if operating_margin is not None else ""
 )
 
+# EPS - Q
 fundamental_sheet.update_cell(
     2,
     17,
-    eps if eps is not None else ""
+    latest_eps if latest_eps is not None else ""
 )
 
+# Quarterly Sales - Y
 fundamental_sheet.update_cell(
     2,
     25,
-    revenue if revenue is not None else ""
+    latest_revenue if latest_revenue is not None else ""
 )
 
+# Quarterly Profit - Z
 fundamental_sheet.update_cell(
     2,
     26,
-    profit if profit is not None else ""
+    latest_profit if latest_profit is not None else ""
+)
+
+# Result Signal - AC
+fundamental_sheet.update_cell(
+    2,
+    29,
+    result_signal
 )
 
 
 # ============================================================
-# FINAL STATUS
+# FINAL MESSAGE
 # ============================================================
 
 fundamental_sheet.update_cell(
@@ -331,7 +575,9 @@ fundamental_sheet.update_cell(
 
 print("==========================================")
 print("SUCCESS")
-print("Fundamental Analysis updated")
-print("Quarterly Results updated")
-print("Duplicate results handled")
+print("Latest quarter:", latest_date)
+print("Revenue Growth:", revenue_growth)
+print("Profit Growth:", profit_growth)
+print("EPS Growth:", eps_growth)
+print("Result Signal:", result_signal)
 print("==========================================")
