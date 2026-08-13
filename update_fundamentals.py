@@ -78,7 +78,8 @@ if fundamental_sheet is None:
 if quarterly_sheet is None:
     print("ERROR: Quarterly Results worksheet not found!")
     raise SystemExit(1)
-    if balance_sheet is None:
+
+if balance_sheet is None:
     print("ERROR: Balance Sheet worksheet not found!")
     raise SystemExit(1)
 
