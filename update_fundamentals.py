@@ -560,7 +560,59 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
+# ------------------------------------------------------------
 # DEBT / EQUITY - L2
+# ------------------------------------------------------------
+
+total_equity = getattr(
+    latest,
+    "bs_equity",
+    None
+)
+
+noncurrent_financial_liabilities = getattr(
+    latest,
+    "bs_noncurrent_fin_liab",
+    None
+)
+
+current_financial_liabilities = getattr(
+    latest,
+    "bs_current_fin_liab",
+    None
+)
+
+debt_equity = None
+
+if (
+    total_equity not in (None, 0)
+    and (
+        noncurrent_financial_liabilities is not None
+        or current_financial_liabilities is not None
+    )
+):
+
+    noncurrent_debt = (
+        noncurrent_financial_liabilities
+        if noncurrent_financial_liabilities is not None
+        else 0
+    )
+
+    current_debt = (
+        current_financial_liabilities
+        if current_financial_liabilities is not None
+        else 0
+    )
+
+    debt_equity = (
+        noncurrent_debt + current_debt
+    ) / total_equity
+
+fundamental_sheet.update_cell(
+    2,
+    12,
+    debt_equity if debt_equity is not None else ""
+)
 # ------------------------------------------------------------
 
 debt_equity = getattr(
@@ -576,7 +628,44 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
+# ------------------------------------------------------------
 # BOOK VALUE PER SHARE - R2
+# ------------------------------------------------------------
+
+paid_up_equity = getattr(
+    latest,
+    "paid_up_equity",
+    None
+)
+
+face_value = getattr(
+    latest,
+    "face_value",
+    None
+)
+
+book_value = None
+
+if (
+    total_equity is not None
+    and paid_up_equity not in (None, 0)
+    and face_value not in (None, 0)
+):
+
+    shares_outstanding = (
+        paid_up_equity / face_value
+    )
+
+    if shares_outstanding != 0:
+        book_value = (
+            total_equity / shares_outstanding
+        )
+
+fundamental_sheet.update_cell(
+    2,
+    18,
+    book_value if book_value is not None else ""
+)
 # ------------------------------------------------------------
 
 book_value = getattr(
