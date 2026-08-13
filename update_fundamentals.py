@@ -408,6 +408,62 @@ if annual_filing is not None:
 
 print("===============================================")
 
+# ============================================================
+# ANNUAL CASH FLOW - V2 / W2
+# ============================================================
+
+operating_cash_flow = None
+capital_expenditure = None
+free_cash_flow = None
+
+if annual_filing is not None:
+    annual_cash_raw_facts = getattr(
+        annual_filing,
+        "raw_facts",
+        {}
+    )
+
+    operating_contexts = annual_cash_raw_facts.get(
+        "CashFlowsFromUsedInOperatingActivities",
+        {}
+    )
+
+    capex_contexts = annual_cash_raw_facts.get(
+        "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
+        {}
+    )
+
+    if isinstance(operating_contexts, dict):
+        operating_cash_flow = operating_contexts.get("FourD")
+
+    if isinstance(capex_contexts, dict):
+        capital_expenditure = capex_contexts.get("FourD")
+
+    try:
+        if operating_cash_flow is not None:
+            operating_cash_flow = float(operating_cash_flow)
+    except (ValueError, TypeError):
+        operating_cash_flow = None
+
+    try:
+        if capital_expenditure is not None:
+            capital_expenditure = float(capital_expenditure)
+    except (ValueError, TypeError):
+        capital_expenditure = None
+
+    # Free Cash Flow = Operating Cash Flow - Capital Expenditure
+    if (
+        operating_cash_flow is not None
+        and capital_expenditure is not None
+    ):
+        free_cash_flow = (
+            operating_cash_flow - capital_expenditure
+        )
+
+print("Operating Cash Flow:", operating_cash_flow)
+print("Capital Expenditure:", capital_expenditure)
+print("Free Cash Flow:", free_cash_flow)
+
 latest_revenue = getattr(
     latest,
     "q_revenue",
@@ -875,31 +931,27 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
-# CASH FLOW - V2
+# OPERATING CASH FLOW - V2
 # ------------------------------------------------------------
-
-net_change_cash = getattr(
-    latest,
-    "cf_net_change_in_cash",
-    None
-)
 
 fundamental_sheet.update_cell(
     2,
     22,
-    net_change_cash if net_change_cash is not None else ""
+    operating_cash_flow
+    if operating_cash_flow is not None
+    else ""
 )
 
 # ------------------------------------------------------------
 # FREE CASH FLOW - W2
 # ------------------------------------------------------------
 
-# We do not calculate FCF until genuine operating
-# cash-flow data is available.
 fundamental_sheet.update_cell(
     2,
     23,
-    ""
+    free_cash_flow
+    if free_cash_flow is not None
+    else ""
 )
 
 # ------------------------------------------------------------
@@ -996,6 +1048,8 @@ print("EPS Growth:", eps_growth)
 print("Net Profit Margin:", net_profit_margin)
 print("ROE:", roe)
 print("ROCE:", roce)
+print("Operating Cash Flow:", operating_cash_flow)
+print("Free Cash Flow:", free_cash_flow)
 print("Debt/Equity:", debt_equity)
 print("Book Value:", book_value)
 print("Net Change in Cash:", net_change_cash)
