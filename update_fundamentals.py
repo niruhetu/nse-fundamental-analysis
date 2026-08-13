@@ -259,7 +259,7 @@ for tag, contexts in raw_facts.items():
 print("==========================================")
 
 # ============================================================
-# ANNUAL FILING FOR ROE / ROCE
+# ANNUAL FILINGS FOR ROE / ROCE
 # ============================================================
 
 annual_filings = []
@@ -270,10 +270,16 @@ for filing_date, filing in valid_filings:
 
 annual_filing = None
 annual_date = None
+prior_annual_filing = None
+prior_annual_date = None
 
 if annual_filings:
     annual_date, annual_filing = annual_filings[0]
     print("Annual filing selected for ROE/ROCE:", annual_date)
+
+    if len(annual_filings) > 1:
+        prior_annual_date, prior_annual_filing = annual_filings[1]
+        print("Prior annual filing selected:", prior_annual_date)
 else:
     print("WARNING: March 31 annual filing not found")
 
@@ -281,53 +287,37 @@ roe = None
 roce = None
 
 if annual_filing is not None:
-    annual_pat = getattr(
-        annual_filing,
-        "ytd_pat",
-        None
-    )
+    annual_pat = getattr(annual_filing, "ytd_pat", None)
+    annual_ebit = getattr(annual_filing, "ytd_ebit", None)
 
-    annual_ebit = getattr(
-        annual_filing,
-        "ytd_ebit",
-        None
-    )
-
-    current_equity = getattr(
-        annual_filing,
-        "bs_equity",
-        None
-    )
-
-    prior_equity = getattr(
-        annual_filing,
-        "py_equity",
-        None
-    )
-
-    current_assets = getattr(
-        annual_filing,
-        "bs_total_assets",
-        None
-    )
-
-    prior_assets = getattr(
-        annual_filing,
-        "py_total_assets",
-        None
-    )
-
+    current_equity = getattr(annual_filing, "bs_equity", None)
+    current_assets = getattr(annual_filing, "bs_total_assets", None)
     current_liabilities = getattr(
         annual_filing,
         "bs_current_liabilities",
         None
     )
 
-    prior_liabilities = getattr(
-        annual_filing,
-        "py_current_liabilities",
-        None
-    )
+    prior_equity = None
+    prior_assets = None
+    prior_liabilities = None
+
+    if prior_annual_filing is not None:
+        prior_equity = getattr(
+            prior_annual_filing,
+            "bs_equity",
+            None
+        )
+        prior_assets = getattr(
+            prior_annual_filing,
+            "bs_total_assets",
+            None
+        )
+        prior_liabilities = getattr(
+            prior_annual_filing,
+            "bs_current_liabilities",
+            None
+        )
 
     print("Annual PAT:", annual_pat)
     print("Annual EBIT:", annual_ebit)
@@ -338,36 +328,6 @@ if annual_filing is not None:
     print("Current Liabilities:", current_liabilities)
     print("Prior Liabilities:", prior_liabilities)
 
-    # ------------------------------------------------------------
-    # ANNUAL RAW FACTS CHECK FOR ROE / ROCE
-    # ------------------------------------------------------------
-    print("========== ANNUAL ROE/ROCE RAW DATA ==========")
-
-    annual_raw_facts = getattr(
-        annual_filing,
-        "raw_facts",
-        {}
-    )
-
-    for tag, contexts in annual_raw_facts.items():
-        tag_lower = tag.lower()
-
-        if any(x in tag_lower for x in [
-            "equity",
-            "networth",
-            "networth",
-            "asset",
-            "liabil",
-            "capital",
-            "reserve",
-            "surplus"
-        ]):
-            print("TAG:", tag)
-            print("VALUES:", contexts)
-
-    print("===============================================")
-
-    # ROE = annual PAT / average shareholders' equity
     if (
         annual_pat is not None
         and current_equity not in (None, 0)
@@ -382,8 +342,6 @@ if annual_filing is not None:
                 annual_pat / average_equity
             ) * 100
 
-    # ROCE = annual EBIT / average capital employed
-    # Capital employed = total assets - current liabilities
     if (
         annual_ebit is not None
         and current_assets is not None
@@ -394,7 +352,6 @@ if annual_filing is not None:
         current_capital_employed = (
             current_assets - current_liabilities
         )
-
         prior_capital_employed = (
             prior_assets - prior_liabilities
         )
@@ -411,6 +368,17 @@ if annual_filing is not None:
 
 print("ROE:", roe)
 print("ROCE:", roce)
+
+print("========== ANNUAL ROE/ROCE CHECK ==========")
+print("Latest annual date:", annual_date)
+print("Prior annual date:", prior_annual_date)
+print("Latest annual equity:", current_equity if annual_filing is not None else None)
+print("Prior annual equity:", prior_equity)
+print("Latest annual assets:", current_assets if annual_filing is not None else None)
+print("Prior annual assets:", prior_assets)
+print("Latest annual current liabilities:", current_liabilities if annual_filing is not None else None)
+print("Prior annual current liabilities:", prior_liabilities)
+print("============================================")
 
 latest_revenue = getattr(
     latest,
