@@ -67,8 +67,9 @@ for ws in spreadsheet.worksheets():
 
     elif name == "quarterly results":
         quarterly_sheet = ws
-elif name == "balance sheet":
-    balance_sheet = ws
+
+    elif name == "balance sheet":
+        balance_sheet = ws
 
 if fundamental_sheet is None:
     print("ERROR: Fundamental Analysis worksheet not found!")
