@@ -338,6 +338,35 @@ if annual_filing is not None:
     print("Current Liabilities:", current_liabilities)
     print("Prior Liabilities:", prior_liabilities)
 
+    # ------------------------------------------------------------
+    # ANNUAL RAW FACTS CHECK FOR ROE / ROCE
+    # ------------------------------------------------------------
+    print("========== ANNUAL ROE/ROCE RAW DATA ==========")
+
+    annual_raw_facts = getattr(
+        annual_filing,
+        "raw_facts",
+        {}
+    )
+
+    for tag, contexts in annual_raw_facts.items():
+        tag_lower = tag.lower()
+
+        if any(x in tag_lower for x in [
+            "equity",
+            "networth",
+            "networth",
+            "asset",
+            "liabil",
+            "capital",
+            "reserve",
+            "surplus"
+        ]):
+            print("TAG:", tag)
+            print("VALUES:", contexts)
+
+    print("===============================================")
+
     # ROE = annual PAT / average shareholders' equity
     if (
         annual_pat is not None
