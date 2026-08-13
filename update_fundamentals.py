@@ -226,6 +226,23 @@ valid_filings.sort(
 # ============================================================
 
 latest_date, latest = valid_filings[0]
+print("========== BALANCE SHEET RAW DATA ==========")
+
+raw_facts = getattr(latest, "raw_facts", {})
+
+for tag, contexts in raw_facts.items():
+    tag_lower = tag.lower()
+
+    if any(x in tag_lower for x in [
+        "equity",
+        "liabil",
+        "borrow",
+        "debt",
+        "capital"
+    ]):
+        print(tag, "=", contexts)
+
+print("============================================")
 
 latest_revenue = getattr(
     latest,
