@@ -54,6 +54,7 @@ print("Google Sheet connected:", spreadsheet.title)
 
 fundamental_sheet = None
 quarterly_sheet = None
+balance_sheet = None
 
 for ws in spreadsheet.worksheets():
 
@@ -66,7 +67,8 @@ for ws in spreadsheet.worksheets():
 
     elif name == "quarterly results":
         quarterly_sheet = ws
-
+elif name == "balance sheet":
+    balance_sheet = ws
 
 if fundamental_sheet is None:
     print("ERROR: Fundamental Analysis worksheet not found!")
@@ -74,6 +76,9 @@ if fundamental_sheet is None:
 
 if quarterly_sheet is None:
     print("ERROR: Quarterly Results worksheet not found!")
+    raise SystemExit(1)
+    if balance_sheet is None:
+    print("ERROR: Balance Sheet worksheet not found!")
     raise SystemExit(1)
 
 
@@ -561,15 +566,17 @@ fundamental_sheet.update_cell(
 
 # ------------------------------------------------------------
 # ------------------------------------------------------------
-# DEBT / EQUITY - L2
+# BUSINESS QUALITY DATA
 # ------------------------------------------------------------
 
+# Total Equity
 total_equity = getattr(
     latest,
     "bs_equity",
     None
 )
 
+# Financial liabilities
 noncurrent_financial_liabilities = getattr(
     latest,
     "bs_noncurrent_fin_liab",
@@ -582,15 +589,13 @@ current_financial_liabilities = getattr(
     None
 )
 
+# ------------------------------------------------------------
+# DEBT / EQUITY - L2
+# ------------------------------------------------------------
+
 debt_equity = None
 
-if (
-    total_equity not in (None, 0)
-    and (
-        noncurrent_financial_liabilities is not None
-        or current_financial_liabilities is not None
-    )
-):
+if total_equity not in (None, 0):
 
     noncurrent_debt = (
         noncurrent_financial_liabilities
@@ -604,22 +609,10 @@ if (
         else 0
     )
 
-    debt_equity = (
-        noncurrent_debt + current_debt
-    ) / total_equity
-
-fundamental_sheet.update_cell(
-    2,
-    12,
-    debt_equity if debt_equity is not None else ""
-)
-# ------------------------------------------------------------
-
-debt_equity = getattr(
-    latest,
-    "debt_equity_ratio",
-    None
-)
+    if noncurrent_financial_liabilities is not None or current_financial_liabilities is not None:
+        debt_equity = (
+            noncurrent_debt + current_debt
+        ) / total_equity
 
 fundamental_sheet.update_cell(
     2,
@@ -628,8 +621,7 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
-# ------------------------------------------------------------
-# BOOK VALUE PER SHARE - R2
+# BOOK VALUE - R2
 # ------------------------------------------------------------
 
 paid_up_equity = getattr(
@@ -647,7 +639,7 @@ face_value = getattr(
 book_value = None
 
 if (
-    total_equity is not None
+    total_equity not in (None, 0)
     and paid_up_equity not in (None, 0)
     and face_value not in (None, 0)
 ):
@@ -656,7 +648,7 @@ if (
         paid_up_equity / face_value
     )
 
-    if shares_outstanding != 0:
+    if shares_outstanding:
         book_value = (
             total_equity / shares_outstanding
         )
@@ -666,32 +658,10 @@ fundamental_sheet.update_cell(
     18,
     book_value if book_value is not None else ""
 )
-# ------------------------------------------------------------
-
-book_value = getattr(
-    latest,
-    "book_value_per_share",
-    None
-)
-
-fundamental_sheet.update_cell(
-    2,
-    18,
-    book_value if book_value is not None else ""
-)
 
 # ------------------------------------------------------------
+# CASH FLOW - V2
 # ------------------------------------------------------------
-# CASH FLOW - V2 / W2
-# ------------------------------------------------------------
-
-# NSE Integrated Filing provides cash-flow components,
-# including CAPEX and net change in cash.
-capex = getattr(
-    latest,
-    "cf_capex",
-    None
-)
 
 net_change_cash = getattr(
     latest,
@@ -699,63 +669,64 @@ net_change_cash = getattr(
     None
 )
 
-# V2 = Net Change in Cash
 fundamental_sheet.update_cell(
     2,
     22,
     net_change_cash if net_change_cash is not None else ""
 )
 
-# W2 = Free Cash Flow
-# We can calculate this only when an operating cash-flow
-# figure is available. The current parser does not expose
-# operating cash flow directly.
-free_cash_flow = ""
-
-fundamental_sheet.update_cell(
-    2,
-    23,
-    free_cash_flow
-)
-# ------------------------------------------------------------
-
-operating_cash_flow = getattr(
-    latest,
-    "cf_operating",
-    None
-)
-
-fundamental_sheet.update_cell(
-    2,
-    22,
-    operating_cash_flow if operating_cash_flow is not None else ""
-)
-
 # ------------------------------------------------------------
 # FREE CASH FLOW - W2
 # ------------------------------------------------------------
 
-capex = getattr(
-    latest,
-    "cf_capex",
-    None
-)
-
-free_cash_flow = None
-
-if operating_cash_flow is not None and capex is not None:
-    free_cash_flow = operating_cash_flow - abs(capex)
-
+# We do not calculate FCF until genuine operating
+# cash-flow data is available.
 fundamental_sheet.update_cell(
     2,
     23,
-    free_cash_flow if free_cash_flow is not None else ""
+    ""
 )
 
 # ------------------------------------------------------------
-# EPS - Q2
+# BALANCE SHEET TAB
 # ------------------------------------------------------------
 
+balance_sheet_row = [
+    stock_name,
+    "NSE:" + symbol,
+    str(latest_date),
+    latest_profit if latest_profit is not None else "",
+    total_equity if total_equity is not None else "",
+    (
+        (
+            noncurrent_financial_liabilities
+            if noncurrent_financial_liabilities is not None
+            else 0
+        )
+        +
+        (
+            current_financial_liabilities
+            if current_financial_liabilities is not None
+            else 0
+        )
+    )
+    if (
+        noncurrent_financial_liabilities is not None
+        or current_financial_liabilities is not None
+    )
+    else "",
+    getattr(latest, "q_ebit", None) or "",
+    "",
+    "",
+    debt_equity if debt_equity is not None else ""
+]
+
+balance_sheet.append_row(
+    balance_sheet_row,
+    value_input_option="USER_ENTERED"
+)
+
+print("Balance Sheet updated")
 fundamental_sheet.update_cell(
     2,
     17,
