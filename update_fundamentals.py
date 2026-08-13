@@ -1,5 +1,7 @@
 import os
 import json
+import re
+import requests
 from datetime import datetime, date
 
 import gspread
@@ -12,6 +14,204 @@ from nse_xbrl import NSEClient
 # ============================================================
 
 SPREADSHEET_ID = "1Z4dAZIKKHKm9bg8i8-OI6Cka_vz3YSGFGp6PykxpnHw"
+
+
+# ============================================================
+# NSE SHAREHOLDING / PROMOTER DATA
+# ============================================================
+
+def _to_float(value):
+    if value is None:
+        return None
+
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip().replace(",", "")
+    text = text.replace("%", "")
+
+    if not text:
+        return None
+
+    try:
+        return float(text)
+    except (ValueError, TypeError):
+        return None
+
+
+def _walk_dicts(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _walk_dicts(child)
+
+    elif isinstance(value, list):
+        for child in value:
+            yield from _walk_dicts(child)
+
+
+def _find_numeric_by_keys(obj, candidates):
+    candidates = [c.lower().replace(" ", "").replace("_", "") for c in candidates]
+
+    for item in _walk_dicts(obj):
+        for key, value in item.items():
+            key_norm = str(key).lower().replace(" ", "").replace("_", "")
+
+            if any(candidate in key_norm for candidate in candidates):
+                number = _to_float(value)
+
+                if number is not None:
+                    return number
+
+    return None
+
+
+def fetch_promoter_holding_and_pledge(symbol):
+    """
+    Fetch latest promoter holding and promoter pledge from NSE
+    corporate-filing endpoints.
+
+    This function is deliberately non-fatal: if NSE blocks the
+    request, T2/U2 are left blank rather than breaking the
+    financial-analysis update.
+    """
+
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/151.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json,text/plain,*/*",
+        "Referer": "https://www.nseindia.com/",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    session = requests.Session()
+    session.headers.update(headers)
+
+    promoter_holding = None
+    promoter_pledge = None
+
+    try:
+        session.get(
+            "https://www.nseindia.com/",
+            timeout=20
+        )
+
+        share_url = (
+            "https://www.nseindia.com/api/"
+            "corporate-share-holdings-master"
+            f"?index=equities&symbol={symbol}"
+        )
+
+        share_response = session.get(
+            share_url,
+            timeout=20
+        )
+        share_response.raise_for_status()
+        share_json = share_response.json()
+
+        # Common NSE field names for promoter percentage.
+        promoter_holding = _find_numeric_by_keys(
+            share_json,
+            [
+                "promoterShareholding",
+                "promoterHolding",
+                "promoterPercentage",
+                "promoterPercent",
+                "promoterAndPromoterGroup",
+            ]
+        )
+
+        # If the response is a filing list, look for the latest
+        # filing row and then inspect its promoter percentage.
+        if promoter_holding is None:
+            rows = []
+
+            if isinstance(share_json, list):
+                rows = share_json
+
+            elif isinstance(share_json, dict):
+                for key in ("data", "records", "result", "rows"):
+                    candidate = share_json.get(key)
+
+                    if isinstance(candidate, list):
+                        rows = candidate
+                        break
+
+            if rows:
+                rows = sorted(
+                    rows,
+                    key=lambda row: str(
+                        row.get("asOnDate")
+                        or row.get("asOn")
+                        or row.get("date")
+                        or row.get("submissionDate")
+                        or ""
+                    ),
+                    reverse=True
+                )
+
+                for row in rows:
+                    promoter_holding = _find_numeric_by_keys(
+                        row,
+                        [
+                            "promoterShareholding",
+                            "promoterHolding",
+                            "promoterPercentage",
+                            "promoterPercent",
+                            "promoter",
+                        ]
+                    )
+
+                    if promoter_holding is not None:
+                        break
+
+        pledge_url = (
+            "https://www.nseindia.com/api/"
+            "corporate-pledged-data"
+            f"?index=equities&symbol={symbol}"
+        )
+
+        pledge_response = session.get(
+            pledge_url,
+            timeout=20
+        )
+        pledge_response.raise_for_status()
+        pledge_json = pledge_response.json()
+
+        # Prefer pledge as % of promoter shares (X/A).
+        promoter_pledge = _find_numeric_by_keys(
+            pledge_json,
+            [
+                "percentageofpromotershares",
+                "promotersharesencumbered",
+                "pledgedpromotershares",
+                "pledgedpercentage",
+                "pledgepercentage",
+                "pledgepromoter",
+            ]
+        )
+
+        if promoter_pledge is None:
+            # Some NSE responses expose the value under a shorter
+            # "X/A" or "encumbered" field.
+            promoter_pledge = _find_numeric_by_keys(
+                pledge_json,
+                [
+                    "x/a",
+                    "x_a",
+                    "encumbered",
+                ]
+            )
+
+        return promoter_holding, promoter_pledge
+
+    except Exception as e:
+        print("WARNING: Promoter holding/pledge fetch failed.")
+        print(e)
+        return None, None
 
 
 # ============================================================
@@ -103,6 +303,35 @@ symbol = nse_code.upper().replace("NSE:", "").strip()
 
 print("Stock:", stock_name)
 print("Symbol:", symbol)
+
+# ============================================================
+# PROMOTER HOLDING / PLEDGE
+# ============================================================
+
+promoter_holding, promoter_pledge = (
+    fetch_promoter_holding_and_pledge(symbol)
+)
+
+print("Promoter Holding:", promoter_holding)
+print("Promoter Pledge:", promoter_pledge)
+
+# T2 = Promoter Holding
+fundamental_sheet.update_cell(
+    2,
+    20,
+    promoter_holding
+    if promoter_holding is not None
+    else ""
+)
+
+# U2 = Promoter Pledge
+fundamental_sheet.update_cell(
+    2,
+    21,
+    promoter_pledge
+    if promoter_pledge is not None
+    else ""
+)
 
 
 # ============================================================
@@ -499,30 +728,10 @@ fundamental_sheet.update_cell(
 )
 
 print("Interest Coverage:", interest_coverage)
+print("Promoter Holding:", promoter_holding)
+print("Promoter Pledge:", promoter_pledge)
 
 
-
-print("========== PROMOTER HOLDING / PLEDGE RAW DATA ==========")
-
-promoter_raw_facts = getattr(
-    latest,
-    "raw_facts",
-    {}
-)
-
-for tag, contexts in promoter_raw_facts.items():
-    tag_lower = tag.lower()
-
-    if (
-        "promoter" in tag_lower
-        or "promoters" in tag_lower
-        or "pledge" in tag_lower
-        or "shareholding" in tag_lower
-    ):
-        print("TAG:", tag)
-        print("VALUES:", contexts)
-
-print("========================================================")
 
 latest_revenue = getattr(
     latest,
