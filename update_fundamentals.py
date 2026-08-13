@@ -464,6 +464,29 @@ print("Operating Cash Flow:", operating_cash_flow)
 print("Capital Expenditure:", capital_expenditure)
 print("Free Cash Flow:", free_cash_flow)
 
+print("========== INTEREST COVERAGE RAW DATA ==========")
+
+if latest is not None:
+    interest_raw_facts = getattr(
+        latest,
+        "raw_facts",
+        {}
+    )
+
+    for tag, contexts in interest_raw_facts.items():
+        tag_lower = tag.lower()
+
+        if (
+            "interestcoverage" in tag_lower
+            or "interestcovered" in tag_lower
+            or "interest" in tag_lower
+            or "coverage" in tag_lower
+        ):
+            print("TAG:", tag)
+            print("VALUES:", contexts)
+
+print("===============================================")
+
 latest_revenue = getattr(
     latest,
     "q_revenue",
