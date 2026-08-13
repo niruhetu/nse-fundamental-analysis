@@ -633,8 +633,6 @@ fundamental_sheet.update_cell(
 )
 
 print("Debt/Equity from NSE:", debt_equity)
-    debt_equity if debt_equity is not None else ""
-)
 
 # ------------------------------------------------------------
 # BOOK VALUE - R2
@@ -779,14 +777,6 @@ fundamental_sheet.update_cell(
     29,
     result_signal if result_signal else "DATA NOT AVAILABLE"
 )
-# ------------------------------------------------------------
-
-fundamental_sheet.update_cell(
-    2,
-    29,
-    result_signal
-)
-
 # ------------------------------------------------------------
 # SUCCESS MESSAGE
 # ------------------------------------------------------------
