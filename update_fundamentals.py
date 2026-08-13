@@ -504,30 +504,10 @@ else:
 # ============================================================
 # UPDATE FUNDAMENTAL ANALYSIS
 # ============================================================
-# Debt/Equity - L
-debt_equity = getattr(
-    latest,
-    "debt_equity_ratio",
-    None
-)
 
-fundamental_sheet.update_cell(
-    2,
-    12,
-    debt_equity if debt_equity is not None else ""
-)
-# Book Value Per Share - R
-book_value = getattr(
-    latest,
-    "book_value_per_share",
-    None
-)
-
-fundamental_sheet.update_cell(
-    2,
-    18,
-    book_value if book_value is not None else ""
-)
+# ------------------------------------------------------------
+# BASIC RESULT DATA
+# ------------------------------------------------------------
 
 fundamental_sheet.update_cell(
     2,
@@ -541,66 +521,156 @@ fundamental_sheet.update_cell(
     str(latest_date)
 )
 
-# Revenue Growth - G
+# Revenue Growth - G2
 fundamental_sheet.update_cell(
     2,
     7,
     revenue_growth if revenue_growth is not None else ""
 )
 
-# Profit Growth - H
+# Profit Growth - H2
 fundamental_sheet.update_cell(
     2,
     8,
     profit_growth if profit_growth is not None else ""
 )
 
-# EPS Growth - I
+# EPS Growth - I2
 fundamental_sheet.update_cell(
     2,
     9,
     eps_growth if eps_growth is not None else ""
 )
 
-# Operating Margin - M
+# ------------------------------------------------------------
+# NET PROFIT MARGIN - N2
+# ------------------------------------------------------------
+
+net_profit_margin = None
+
+if latest_revenue not in (None, 0) and latest_profit is not None:
+    net_profit_margin = (
+        latest_profit / latest_revenue
+    ) * 100
+
 fundamental_sheet.update_cell(
     2,
-    13,
-    operating_margin if operating_margin is not None else ""
+    14,
+    net_profit_margin if net_profit_margin is not None else ""
 )
 
-# EPS - Q
+# ------------------------------------------------------------
+# DEBT / EQUITY - L2
+# ------------------------------------------------------------
+
+debt_equity = getattr(
+    latest,
+    "debt_equity_ratio",
+    None
+)
+
+fundamental_sheet.update_cell(
+    2,
+    12,
+    debt_equity if debt_equity is not None else ""
+)
+
+# ------------------------------------------------------------
+# BOOK VALUE PER SHARE - R2
+# ------------------------------------------------------------
+
+book_value = getattr(
+    latest,
+    "book_value_per_share",
+    None
+)
+
+fundamental_sheet.update_cell(
+    2,
+    18,
+    book_value if book_value is not None else ""
+)
+
+# ------------------------------------------------------------
+# OPERATING CASH FLOW - V2
+# ------------------------------------------------------------
+
+operating_cash_flow = getattr(
+    latest,
+    "cf_operating",
+    None
+)
+
+fundamental_sheet.update_cell(
+    2,
+    22,
+    operating_cash_flow if operating_cash_flow is not None else ""
+)
+
+# ------------------------------------------------------------
+# FREE CASH FLOW - W2
+# ------------------------------------------------------------
+
+capex = getattr(
+    latest,
+    "cf_capex",
+    None
+)
+
+free_cash_flow = None
+
+if operating_cash_flow is not None and capex is not None:
+    free_cash_flow = operating_cash_flow - abs(capex)
+
+fundamental_sheet.update_cell(
+    2,
+    23,
+    free_cash_flow if free_cash_flow is not None else ""
+)
+
+# ------------------------------------------------------------
+# EPS - Q2
+# ------------------------------------------------------------
+
 fundamental_sheet.update_cell(
     2,
     17,
     latest_eps if latest_eps is not None else ""
 )
 
-# Quarterly Sales - Y
+# ------------------------------------------------------------
+# QUARTERLY SALES - Y2
+# ------------------------------------------------------------
+
 fundamental_sheet.update_cell(
     2,
     25,
     latest_revenue if latest_revenue is not None else ""
 )
 
-# Quarterly Profit - Z
+# ------------------------------------------------------------
+# QUARTERLY PROFIT - Z2
+# ------------------------------------------------------------
+
 fundamental_sheet.update_cell(
     2,
     26,
     latest_profit if latest_profit is not None else ""
 )
 
-# Result Signal - AC
+# ------------------------------------------------------------
+# RESULT SIGNAL - AC2
+# ------------------------------------------------------------
+
 fundamental_sheet.update_cell(
     2,
     29,
     result_signal
 )
 
-
-# ============================================================
-# FINAL MESSAGE
-# ============================================================
+# ------------------------------------------------------------
+# SUCCESS MESSAGE
+# ------------------------------------------------------------
 
 fundamental_sheet.update_cell(
     3,
@@ -610,9 +680,13 @@ fundamental_sheet.update_cell(
 
 print("==========================================")
 print("SUCCESS")
-print("Latest quarter:", latest_date)
 print("Revenue Growth:", revenue_growth)
 print("Profit Growth:", profit_growth)
 print("EPS Growth:", eps_growth)
+print("Net Profit Margin:", net_profit_margin)
+print("Debt/Equity:", debt_equity)
+print("Book Value:", book_value)
+print("Operating Cash Flow:", operating_cash_flow)
+print("Free Cash Flow:", free_cash_flow)
 print("Result Signal:", result_signal)
 print("==========================================")
