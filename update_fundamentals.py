@@ -464,28 +464,43 @@ print("Operating Cash Flow:", operating_cash_flow)
 print("Capital Expenditure:", capital_expenditure)
 print("Free Cash Flow:", free_cash_flow)
 
-print("========== INTEREST COVERAGE RAW DATA ==========")
+# ============================================================
+# INTEREST COVERAGE - X2
+# ============================================================
 
-if latest is not None:
-    interest_raw_facts = getattr(
-        latest,
-        "raw_facts",
-        {}
-    )
+interest_coverage = None
 
-    for tag, contexts in interest_raw_facts.items():
-        tag_lower = tag.lower()
+interest_raw_facts = getattr(
+    latest,
+    "raw_facts",
+    {}
+)
 
-        if (
-            "interestcoverage" in tag_lower
-            or "interestcovered" in tag_lower
-            or "interest" in tag_lower
-            or "coverage" in tag_lower
-        ):
-            print("TAG:", tag)
-            print("VALUES:", contexts)
+interest_contexts = interest_raw_facts.get(
+    "InterestServiceCoverageRatio",
+    {}
+)
 
-print("===============================================")
+if isinstance(interest_contexts, dict):
+    interest_coverage = interest_contexts.get("OneD")
+
+if interest_coverage is not None:
+    try:
+        interest_coverage = float(interest_coverage)
+    except (ValueError, TypeError):
+        interest_coverage = None
+
+fundamental_sheet.update_cell(
+    2,
+    24,
+    interest_coverage
+    if interest_coverage is not None
+    else ""
+)
+
+print("Interest Coverage:", interest_coverage)
+
+
 
 latest_revenue = getattr(
     latest,
