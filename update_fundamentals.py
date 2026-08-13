@@ -502,6 +502,28 @@ print("Interest Coverage:", interest_coverage)
 
 
 
+print("========== PROMOTER HOLDING / PLEDGE RAW DATA ==========")
+
+promoter_raw_facts = getattr(
+    latest,
+    "raw_facts",
+    {}
+)
+
+for tag, contexts in promoter_raw_facts.items():
+    tag_lower = tag.lower()
+
+    if (
+        "promoter" in tag_lower
+        or "promoters" in tag_lower
+        or "pledge" in tag_lower
+        or "shareholding" in tag_lower
+    ):
+        print("TAG:", tag)
+        print("VALUES:", contexts)
+
+print("========================================================")
+
 latest_revenue = getattr(
     latest,
     "q_revenue",
