@@ -380,6 +380,34 @@ print("Latest annual current liabilities:", current_liabilities if annual_filing
 print("Prior annual current liabilities:", prior_liabilities)
 print("============================================")
 
+print("========== ANNUAL CASH FLOW RAW DATA ==========")
+
+if annual_filing is not None:
+    annual_cash_raw_facts = getattr(
+        annual_filing,
+        "raw_facts",
+        {}
+    )
+
+    for tag, contexts in annual_cash_raw_facts.items():
+        tag_lower = tag.lower()
+
+        if any(x in tag_lower for x in [
+            "cash",
+            "operating",
+            "capex",
+            "purchaseofproperty",
+            "purchaseofppe",
+            "paymentsforproperty",
+            "netcash",
+            "generatedfromoperations",
+            "flowsfromoperating"
+        ]):
+            print("TAG:", tag)
+            print("VALUES:", contexts)
+
+print("===============================================")
+
 latest_revenue = getattr(
     latest,
     "q_revenue",
