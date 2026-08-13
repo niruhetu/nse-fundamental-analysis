@@ -592,7 +592,42 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
-# OPERATING CASH FLOW - V2
+# ------------------------------------------------------------
+# CASH FLOW - V2 / W2
+# ------------------------------------------------------------
+
+# NSE Integrated Filing provides cash-flow components,
+# including CAPEX and net change in cash.
+capex = getattr(
+    latest,
+    "cf_capex",
+    None
+)
+
+net_change_cash = getattr(
+    latest,
+    "cf_net_change_in_cash",
+    None
+)
+
+# V2 = Net Change in Cash
+fundamental_sheet.update_cell(
+    2,
+    22,
+    net_change_cash if net_change_cash is not None else ""
+)
+
+# W2 = Free Cash Flow
+# We can calculate this only when an operating cash-flow
+# figure is available. The current parser does not expose
+# operating cash flow directly.
+free_cash_flow = ""
+
+fundamental_sheet.update_cell(
+    2,
+    23,
+    free_cash_flow
+)
 # ------------------------------------------------------------
 
 operating_cash_flow = getattr(
@@ -659,7 +694,15 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
+# ------------------------------------------------------------
 # RESULT SIGNAL - AC2
+# ------------------------------------------------------------
+
+fundamental_sheet.update_cell(
+    2,
+    29,
+    result_signal if result_signal else "DATA NOT AVAILABLE"
+)
 # ------------------------------------------------------------
 
 fundamental_sheet.update_cell(
