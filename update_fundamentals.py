@@ -609,33 +609,30 @@ current_financial_liabilities = getattr(
 )
 
 # ------------------------------------------------------------
+# ------------------------------------------------------------
 # DEBT / EQUITY - L2
 # ------------------------------------------------------------
 
 debt_equity = None
 
-if total_equity not in (None, 0):
+raw_debt = raw_facts.get("DebtEquityRatio", {})
 
-    noncurrent_debt = (
-        noncurrent_financial_liabilities
-        if noncurrent_financial_liabilities is not None
-        else 0
-    )
+if isinstance(raw_debt, dict):
+    debt_equity = raw_debt.get("OneD")
 
-    current_debt = (
-        current_financial_liabilities
-        if current_financial_liabilities is not None
-        else 0
-    )
-
-    if noncurrent_financial_liabilities is not None or current_financial_liabilities is not None:
-        debt_equity = (
-            noncurrent_debt + current_debt
-        ) / total_equity
+if debt_equity is not None:
+    try:
+        debt_equity = float(debt_equity)
+    except (ValueError, TypeError):
+        debt_equity = None
 
 fundamental_sheet.update_cell(
     2,
     12,
+    debt_equity if debt_equity is not None else ""
+)
+
+print("Debt/Equity from NSE:", debt_equity)
     debt_equity if debt_equity is not None else ""
 )
 
