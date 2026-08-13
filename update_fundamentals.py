@@ -258,6 +258,131 @@ for tag, contexts in raw_facts.items():
         print(tag, "=", contexts)
 print("==========================================")
 
+# ============================================================
+# ANNUAL FILING FOR ROE / ROCE
+# ============================================================
+
+annual_filings = []
+
+for filing_date, filing in valid_filings:
+    if filing_date.month == 3 and filing_date.day == 31:
+        annual_filings.append((filing_date, filing))
+
+annual_filing = None
+annual_date = None
+
+if annual_filings:
+    annual_date, annual_filing = annual_filings[0]
+    print("Annual filing selected for ROE/ROCE:", annual_date)
+else:
+    print("WARNING: March 31 annual filing not found")
+
+roe = None
+roce = None
+
+if annual_filing is not None:
+    annual_pat = getattr(
+        annual_filing,
+        "ytd_pat",
+        None
+    )
+
+    annual_ebit = getattr(
+        annual_filing,
+        "ytd_ebit",
+        None
+    )
+
+    current_equity = getattr(
+        annual_filing,
+        "bs_equity",
+        None
+    )
+
+    prior_equity = getattr(
+        annual_filing,
+        "py_equity",
+        None
+    )
+
+    current_assets = getattr(
+        annual_filing,
+        "bs_total_assets",
+        None
+    )
+
+    prior_assets = getattr(
+        annual_filing,
+        "py_total_assets",
+        None
+    )
+
+    current_liabilities = getattr(
+        annual_filing,
+        "bs_current_liabilities",
+        None
+    )
+
+    prior_liabilities = getattr(
+        annual_filing,
+        "py_current_liabilities",
+        None
+    )
+
+    print("Annual PAT:", annual_pat)
+    print("Annual EBIT:", annual_ebit)
+    print("Current Equity:", current_equity)
+    print("Prior Equity:", prior_equity)
+    print("Current Assets:", current_assets)
+    print("Prior Assets:", prior_assets)
+    print("Current Liabilities:", current_liabilities)
+    print("Prior Liabilities:", prior_liabilities)
+
+    # ROE = annual PAT / average shareholders' equity
+    if (
+        annual_pat is not None
+        and current_equity not in (None, 0)
+        and prior_equity not in (None, 0)
+    ):
+        average_equity = (
+            current_equity + prior_equity
+        ) / 2
+
+        if average_equity != 0:
+            roe = (
+                annual_pat / average_equity
+            ) * 100
+
+    # ROCE = annual EBIT / average capital employed
+    # Capital employed = total assets - current liabilities
+    if (
+        annual_ebit is not None
+        and current_assets is not None
+        and prior_assets is not None
+        and current_liabilities is not None
+        and prior_liabilities is not None
+    ):
+        current_capital_employed = (
+            current_assets - current_liabilities
+        )
+
+        prior_capital_employed = (
+            prior_assets - prior_liabilities
+        )
+
+        average_capital_employed = (
+            current_capital_employed
+            + prior_capital_employed
+        ) / 2
+
+        if average_capital_employed != 0:
+            roce = (
+                annual_ebit / average_capital_employed
+            ) * 100
+
+print("ROE:", roe)
+print("ROCE:", roce)
+
 latest_revenue = getattr(
     latest,
     "q_revenue",
@@ -598,6 +723,26 @@ fundamental_sheet.update_cell(
 )
 
 # ------------------------------------------------------------
+# ROE - J2
+# ------------------------------------------------------------
+
+fundamental_sheet.update_cell(
+    2,
+    10,
+    roe if roe is not None else ""
+)
+
+# ------------------------------------------------------------
+# ROCE - K2
+# ------------------------------------------------------------
+
+fundamental_sheet.update_cell(
+    2,
+    11,
+    roce if roce is not None else ""
+)
+
+# ------------------------------------------------------------
 # ------------------------------------------------------------
 # BUSINESS QUALITY DATA
 # ------------------------------------------------------------
@@ -761,8 +906,8 @@ balance_sheet_row = [
     )
     else "",
     getattr(latest, "q_ebit", None) or "",
-    "",
-    "",
+    roe if roe is not None else "",
+    roce if roce is not None else "",
     debt_equity if debt_equity is not None else ""
 ]
 
@@ -824,6 +969,8 @@ print("Revenue Growth:", revenue_growth)
 print("Profit Growth:", profit_growth)
 print("EPS Growth:", eps_growth)
 print("Net Profit Margin:", net_profit_margin)
+print("ROE:", roe)
+print("ROCE:", roce)
 print("Debt/Equity:", debt_equity)
 print("Book Value:", book_value)
 print("Net Change in Cash:", net_change_cash)
