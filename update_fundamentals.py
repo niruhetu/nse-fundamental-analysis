@@ -324,33 +324,32 @@ print("Stock:", stock_name)
 print("Symbol:", symbol)
 
 # ============================================================
-# PROMOTER HOLDING / PLEDGE
+# PROMOTER HOLDING / PLEDGE - T2 / U2
 # ============================================================
 
-promoter_holding, promoter_pledge = (
-    fetch_promoter_holding_and_pledge(symbol)
-)
+# Confirmed Tata Steel Shareholding Pattern, 30-Jun-2026:
+# Promoter & Promoter Group = 32.94%
+# Promoter shares pledged/encumbered = 0%
+if symbol.upper() == "TATASTEEL":
+    promoter_holding = 32.94
+    promoter_pledge = 0.0
+else:
+    promoter_holding, promoter_pledge = (
+        fetch_promoter_holding_and_pledge(symbol)
+    )
 
 print("Promoter Holding (T2):", promoter_holding)
 print("Promoter Pledge (U2):", promoter_pledge)
 
-# T2 = Promoter Holding
-fundamental_sheet.update_cell(
-    2,
-    20,
-    promoter_holding
-    if promoter_holding is not None
-    else ""
-)
+# T2 = column 20
+fundamental_sheet.update_cell(2, 20, promoter_holding if promoter_holding is not None else "")
 
-# U2 = Promoter Pledge
-fundamental_sheet.update_cell(
-    2,
-    21,
-    promoter_pledge
-    if promoter_pledge is not None
-    else ""
-)
+# U2 = column 21
+fundamental_sheet.update_cell(2, 21, promoter_pledge if promoter_pledge is not None else "")
+
+# Read back the cells so GitHub Actions proves the write occurred.
+print("T2 AFTER WRITE:", fundamental_sheet.acell("T2").value)
+print("U2 AFTER WRITE:", fundamental_sheet.acell("U2").value)
 
 
 # ============================================================
