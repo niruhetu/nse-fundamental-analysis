@@ -504,6 +504,30 @@ else:
 # ============================================================
 # UPDATE FUNDAMENTAL ANALYSIS
 # ============================================================
+# Debt/Equity - L
+debt_equity = getattr(
+    latest,
+    "debt_equity_ratio",
+    None
+)
+
+fundamental_sheet.update_cell(
+    2,
+    12,
+    debt_equity if debt_equity is not None else ""
+)
+# Book Value Per Share - R
+book_value = getattr(
+    latest,
+    "book_value_per_share",
+    None
+)
+
+fundamental_sheet.update_cell(
+    2,
+    18,
+    book_value if book_value is not None else ""
+)
 
 fundamental_sheet.update_cell(
     2,
