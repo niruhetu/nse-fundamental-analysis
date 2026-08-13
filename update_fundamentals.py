@@ -244,6 +244,20 @@ for tag, contexts in raw_facts.items():
 
 print("============================================")
 
+print("========== BOOK VALUE RAW DATA ==========")
+for tag, contexts in raw_facts.items():
+    tag_lower = tag.lower()
+    if any(x in tag_lower for x in [
+        "book",
+        "networth",
+        "networth",
+        "reserve",
+        "surplus",
+        "equity"
+    ]):
+        print(tag, "=", contexts)
+print("==========================================")
+
 latest_revenue = getattr(
     latest,
     "q_revenue",
@@ -652,20 +666,37 @@ face_value = getattr(
 
 book_value = None
 
-if (
-    total_equity not in (None, 0)
-    and paid_up_equity not in (None, 0)
-    and face_value not in (None, 0)
-):
-
-    shares_outstanding = (
-        paid_up_equity / face_value
+# First try the package's computed property.
+try:
+    book_value = getattr(
+        latest,
+        "book_value_per_share",
+        None
     )
+except Exception:
+    book_value = None
 
-    if shares_outstanding:
-        book_value = (
-            total_equity / shares_outstanding
-        )
+# If the computed property is unavailable, look for a
+# Book Value per Share fact in the raw NSE XBRL data.
+if book_value is None:
+    for tag, contexts in raw_facts.items():
+        tag_lower = tag.lower()
+
+        if "book" in tag_lower and "value" in tag_lower:
+            if isinstance(contexts, dict):
+                candidate = contexts.get("OneD")
+
+                if candidate is not None:
+                    try:
+                        book_value = float(candidate)
+                        print(
+                            "Book Value from NSE raw fact:",
+                            tag,
+                            book_value
+                        )
+                        break
+                    except (ValueError, TypeError):
+                        pass
 
 fundamental_sheet.update_cell(
     2,
