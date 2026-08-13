@@ -878,57 +878,73 @@ print("Debt/Equity from NSE:", debt_equity)
 # BOOK VALUE - R2
 # ------------------------------------------------------------
 
-paid_up_equity = getattr(
-    latest,
-    "paid_up_equity",
-    None
-)
-
-face_value = getattr(
-    latest,
-    "face_value",
-    None
-)
-
 book_value = None
 
-# First try the package's computed property.
-try:
-    book_value = getattr(
-        latest,
-        "book_value_per_share",
+if annual_filing is not None:
+    annual_equity = getattr(
+        annual_filing,
+        "bs_equity",
         None
     )
-except Exception:
-    book_value = None
 
-# If the computed property is unavailable, look for a
-# Book Value per Share fact in the raw NSE XBRL data.
-if book_value is None:
-    for tag, contexts in raw_facts.items():
-        tag_lower = tag.lower()
+    annual_paid_up_equity = None
+    annual_face_value = None
 
-        if "book" in tag_lower and "value" in tag_lower:
-            if isinstance(contexts, dict):
-                candidate = contexts.get("OneD")
+    annual_raw_facts = getattr(
+        annual_filing,
+        "raw_facts",
+        {}
+    )
 
-                if candidate is not None:
-                    try:
-                        book_value = float(candidate)
-                        print(
-                            "Book Value from NSE raw fact:",
-                            tag,
-                            book_value
-                        )
-                        break
-                    except (ValueError, TypeError):
-                        pass
+    paid_up_contexts = annual_raw_facts.get(
+        "PaidUpValueOfEquityShareCapital",
+        {}
+    )
+
+    face_contexts = annual_raw_facts.get(
+        "FaceValueOfEquityShareCapital",
+        {}
+    )
+
+    if isinstance(paid_up_contexts, dict):
+        annual_paid_up_equity = paid_up_contexts.get("OneD")
+
+    if isinstance(face_contexts, dict):
+        annual_face_value = face_contexts.get("OneD")
+
+    try:
+        if annual_paid_up_equity is not None:
+            annual_paid_up_equity = float(annual_paid_up_equity)
+    except (ValueError, TypeError):
+        annual_paid_up_equity = None
+
+    try:
+        if annual_face_value is not None:
+            annual_face_value = float(annual_face_value)
+    except (ValueError, TypeError):
+        annual_face_value = None
+
+    if (
+        annual_equity not in (None, 0)
+        and annual_paid_up_equity not in (None, 0)
+        and annual_face_value not in (None, 0)
+    ):
+        shares_outstanding = (
+            annual_paid_up_equity / annual_face_value
+        )
+
+        if shares_outstanding != 0:
+            book_value = (
+                annual_equity / shares_outstanding
+            )
 
 fundamental_sheet.update_cell(
     2,
     18,
     book_value if book_value is not None else ""
 )
+
+print("Book Value:", book_value)
 
 # ------------------------------------------------------------
 # OPERATING CASH FLOW - V2
