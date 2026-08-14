@@ -17,11 +17,15 @@ SPREADSHEET_ID = "1Z4dAZIKKHKm9bg8i8-OI6Cka_vz3YSGFGp6PykxpnHw"
 FUNDAMENTAL_SHEET = "Fundamental Analysis"
 TOP250_SHEET = "Top 250 Stocks"
 
-# TEST WITH 3 STOCKS FIRST
+# PROCESS ALL 250 STOCKS
 TEST_STOCK_COUNT = 250
 
-# Retry a stock if the worker fails
+# Worker retry
 MAX_RETRIES = 3
+
+# Google Sheets quota protection
+WRITE_RETRY_COUNT = 6
+WAIT_BETWEEN_STOCKS = 15
 
 WORKER_FILE = "fundamental_worker.py"
 
@@ -55,13 +59,99 @@ def connect_google_sheet():
 
 
 # ============================================================
-# GET TOP 250 STOCKS
+# SAFE GOOGLE SHEETS UPDATE
+# ============================================================
+
+def safe_update(
+    worksheet,
+    range_name,
+    values,
+    value_input_option="USER_ENTERED"
+):
+
+    for attempt in range(1, WRITE_RETRY_COUNT + 1):
+
+        try:
+
+            worksheet.update(
+                range_name=range_name,
+                values=values,
+                value_input_option=value_input_option
+            )
+
+            return True
+
+        except gspread.exceptions.APIError as e:
+
+            error_text = str(e)
+
+            if "429" not in error_text:
+                raise
+
+            wait_time = 20 * attempt
+
+            print("==========================================")
+            print("GOOGLE SHEETS WRITE QUOTA REACHED")
+            print("Attempt:", attempt, "of", WRITE_RETRY_COUNT)
+            print("Waiting:", wait_time, "seconds")
+            print("==========================================")
+
+            time.sleep(wait_time)
+
+    raise RuntimeError(
+        "Google Sheets write quota remained exceeded "
+        "after multiple retries."
+    )
+
+
+# ============================================================
+# SAFE CLEAR
+# ============================================================
+
+def safe_clear(worksheet, ranges):
+
+    for attempt in range(1, WRITE_RETRY_COUNT + 1):
+
+        try:
+
+            worksheet.batch_clear(ranges)
+
+            return True
+
+        except gspread.exceptions.APIError as e:
+
+            error_text = str(e)
+
+            if "429" not in error_text:
+                raise
+
+            wait_time = 20 * attempt
+
+            print(
+                "Google Sheets clear quota reached."
+            )
+
+            print(
+                "Waiting",
+                wait_time,
+                "seconds..."
+            )
+
+            time.sleep(wait_time)
+
+    raise RuntimeError(
+        "Google Sheets clear quota remained exceeded."
+    )
+
+
+# ============================================================
+# GET TOP 250
 # ============================================================
 
 def get_top250_stocks(top250_sheet):
 
     print("==========================================")
-    print("Reading Top 250 Stocks")
+    print("READING TOP 250 STOCKS")
     print("==========================================")
 
     for attempt in range(1, 7):
@@ -96,15 +186,15 @@ def get_top250_stocks(top250_sheet):
         )
 
         if len(stocks) >= TEST_STOCK_COUNT:
-            return stocks
+            return stocks[:TEST_STOCK_COUNT]
 
     raise ValueError(
-        "Top 250 Stocks did not provide enough stocks."
+        "Top 250 Stocks did not provide 250 stocks."
     )
 
 
 # ============================================================
-# RUN FUNDAMENTAL WORKER WITH RETRIES
+# RUN FUNDAMENTAL WORKER
 # ============================================================
 
 def run_worker(stock_name):
@@ -113,13 +203,18 @@ def run_worker(stock_name):
 
         print("------------------------------------------")
         print(
-            "Running fundamental_worker.py",
-            "Attempt",
+            "Running fundamental_worker.py"
+        )
+        print(
+            "Stock:",
+            stock_name
+        )
+        print(
+            "Attempt:",
             attempt,
             "of",
             MAX_RETRIES
         )
-        print("Stock:", stock_name)
         print("------------------------------------------")
 
         result = subprocess.run(
@@ -128,7 +223,6 @@ def run_worker(stock_name):
             text=True
         )
 
-        # Always show worker output in GitHub Actions.
         if result.stdout:
             print(result.stdout)
 
@@ -146,18 +240,16 @@ def run_worker(stock_name):
 
         print(
             "Worker FAILED:",
-            stock_name,
-            "Return code:",
-            result.returncode
+            stock_name
         )
 
         if attempt < MAX_RETRIES:
 
             print(
-                "Waiting 10 seconds before retry..."
+                "Waiting 30 seconds before retry..."
             )
 
-            time.sleep(10)
+            time.sleep(30)
 
     return False
 
@@ -179,49 +271,33 @@ def main():
     )
 
     # --------------------------------------------------------
-    # GET STOCKS
+    # GET TOP 250
     # --------------------------------------------------------
 
     stocks = get_top250_stocks(
         top250_sheet
     )
 
-    stocks = stocks[:TEST_STOCK_COUNT]
-
     print("==========================================")
-    print("3-STOCK FUNDAMENTAL TEST")
-    print("==========================================")
-
-    for number, stock in enumerate(
-        stocks,
-        start=1
-    ):
-
-        print(
-            number,
-            ":",
-            stock[0],
-            stock[1]
-        )
-
+    print(
+        "TOTAL STOCKS TO PROCESS:",
+        len(stocks)
+    )
     print("==========================================")
 
     # --------------------------------------------------------
     # CLEAR OLD RESULTS
     # --------------------------------------------------------
 
-    fundamental_sheet.batch_clear([
-        "A2:AH251"
-    ])
-
-    # --------------------------------------------------------
-    # STORE COMPLETED RESULTS IN MEMORY
-    # --------------------------------------------------------
+    safe_clear(
+        fundamental_sheet,
+        ["A2:AH251"]
+    )
 
     completed_results = []
 
     # --------------------------------------------------------
-    # PROCESS EACH STOCK
+    # PROCESS STOCKS
     # --------------------------------------------------------
 
     for number, stock in enumerate(
@@ -232,6 +308,7 @@ def main():
         stock_name = stock[0]
         nse_code = stock[1]
 
+        print("")
         print("==========================================")
         print(
             "PROCESSING STOCK",
@@ -239,36 +316,53 @@ def main():
             "OF",
             len(stocks)
         )
-        print("Stock:", stock_name)
-        print("NSE:", nse_code)
+        print(
+            "Stock:",
+            stock_name
+        )
+        print(
+            "NSE:",
+            nse_code
+        )
         print("==========================================")
 
-        # Put stock into the worker's normal input cells.
-        fundamental_sheet.update(
-            range_name="A2:B2",
-            values=[[stock_name, nse_code]],
-            value_input_option="USER_ENTERED"
+        # ----------------------------------------------------
+        # PUT STOCK INTO WORKER INPUT
+        # ----------------------------------------------------
+
+        safe_update(
+            fundamental_sheet,
+            "A2:B2",
+            [[stock_name, nse_code]]
         )
 
         time.sleep(3)
 
-        # Run worker with automatic retry.
-        success = run_worker(stock_name)
+        # ----------------------------------------------------
+        # RUN WORKER
+        # ----------------------------------------------------
+
+        success = run_worker(
+            stock_name
+        )
 
         if not success:
 
             print("==========================================")
-            print("WARNING - STOCK FAILED")
-            print("Stock:", stock_name)
-            print("NSE:", nse_code)
-            print("Skipping this stock after retries.")
+            print(
+                "SKIPPING FAILED STOCK:",
+                stock_name
+            )
             print("==========================================")
 
             continue
 
         time.sleep(3)
 
-        # Read the completed result from row 2.
+        # ----------------------------------------------------
+        # READ RESULT
+        # ----------------------------------------------------
+
         result = fundamental_sheet.get(
             "A2:AH2",
             value_render_option="UNFORMATTED_VALUE"
@@ -285,56 +379,82 @@ def main():
 
         completed_row = result[0]
 
-        # Save result in Python memory.
         completed_results.append(
             completed_row
         )
 
         print(
-            "Stored result in memory:",
+            "Stored result:",
             stock_name
         )
 
-    # --------------------------------------------------------
-    # WRITE ALL SUCCESSFUL RESULTS
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # SLOW DOWN BEFORE NEXT STOCK
+        # ----------------------------------------------------
+
+        if number < len(stocks):
+
+            print(
+                "Waiting",
+                WAIT_BETWEEN_STOCKS,
+                "seconds before next stock..."
+            )
+
+            time.sleep(
+                WAIT_BETWEEN_STOCKS
+            )
+
+    # ========================================================
+    # WRITE ALL RESULTS
+    # ========================================================
 
     print("==========================================")
     print(
-        "Writing",
+        "SUCCESSFUL RESULTS:",
         len(completed_results),
-        "successful results"
+        "OF",
+        len(stocks)
     )
     print("==========================================")
 
     if completed_results:
 
-        end_row = 1 + len(completed_results)
+        end_row = 1 + len(
+            completed_results
+        )
 
-        fundamental_sheet.update(
-            range_name=f"A2:AH{end_row}",
-            values=completed_results,
-            value_input_option="USER_ENTERED"
+        safe_update(
+            fundamental_sheet,
+            f"A2:AH{end_row}",
+            completed_results
         )
 
     # --------------------------------------------------------
-    # CLEAR EVERYTHING AFTER THE RESULTS
+    # CLEAR REMAINING OLD AREA
     # --------------------------------------------------------
 
-    final_end_row = 1 + len(completed_results)
+    final_end_row = 1 + len(
+        completed_results
+    )
 
     if final_end_row < 251:
 
-        fundamental_sheet.batch_clear([
-            f"A{final_end_row + 1}:AH251"
-        ])
+        safe_clear(
+            fundamental_sheet,
+            [
+                f"A{final_end_row + 1}:AH251"
+            ]
+        )
 
     print("==========================================")
-    print("3-STOCK TEST FINISHED")
+    print("FUNDAMENTAL ANALYSIS FINISHED")
     print(
-        "Successful stocks:",
-        len(completed_results),
-        "of",
+        "Successful:",
+        len(completed_results)
+    )
+    print(
+        "Requested:",
         len(stocks)
     )
     print("==========================================")
