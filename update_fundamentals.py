@@ -18,7 +18,7 @@ FUNDAMENTAL_SHEET = "Fundamental Analysis"
 TOP250_SHEET = "Top 250 Stocks"
 
 # TEST WITH 3 STOCKS FIRST
-TEST_STOCK_COUNT = 3
+TEST_STOCK_COUNT = 250
 
 # Retry a stock if the worker fails
 MAX_RETRIES = 3
