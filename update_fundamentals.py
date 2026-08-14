@@ -17,8 +17,11 @@ SPREADSHEET_ID = "1Z4dAZIKKHKm9bg8i8-OI6Cka_vz3YSGFGp6PykxpnHw"
 FUNDAMENTAL_SHEET = "Fundamental Analysis"
 TOP250_SHEET = "Top 250 Stocks"
 
-# FIRST TEST
+# TEST WITH 3 STOCKS FIRST
 TEST_STOCK_COUNT = 3
+
+# Retry a stock if the worker fails
+MAX_RETRIES = 3
 
 WORKER_FILE = "fundamental_worker.py"
 
@@ -57,11 +60,13 @@ def connect_google_sheet():
 
 def get_top250_stocks(top250_sheet):
 
-    print("Waiting for Top 250 list...")
+    print("==========================================")
+    print("Reading Top 250 Stocks")
+    print("==========================================")
 
     for attempt in range(1, 7):
 
-        time.sleep(10)
+        time.sleep(5)
 
         data = top250_sheet.get(
             "A2:B251",
@@ -94,24 +99,67 @@ def get_top250_stocks(top250_sheet):
             return stocks
 
     raise ValueError(
-        "Top 250 list did not return enough stocks."
+        "Top 250 Stocks did not provide enough stocks."
     )
 
 
 # ============================================================
-# RUN ORIGINAL WORKER
+# RUN FUNDAMENTAL WORKER WITH RETRIES
 # ============================================================
 
-def run_worker():
+def run_worker(stock_name):
 
-    print("------------------------------------------")
-    print("Running fundamental_worker.py")
-    print("------------------------------------------")
+    for attempt in range(1, MAX_RETRIES + 1):
 
-    subprocess.run(
-        [sys.executable, WORKER_FILE],
-        check=True
-    )
+        print("------------------------------------------")
+        print(
+            "Running fundamental_worker.py",
+            "Attempt",
+            attempt,
+            "of",
+            MAX_RETRIES
+        )
+        print("Stock:", stock_name)
+        print("------------------------------------------")
+
+        result = subprocess.run(
+            [sys.executable, WORKER_FILE],
+            capture_output=True,
+            text=True
+        )
+
+        # Always show worker output in GitHub Actions.
+        if result.stdout:
+            print(result.stdout)
+
+        if result.stderr:
+            print(result.stderr)
+
+        if result.returncode == 0:
+
+            print(
+                "Worker SUCCESS:",
+                stock_name
+            )
+
+            return True
+
+        print(
+            "Worker FAILED:",
+            stock_name,
+            "Return code:",
+            result.returncode
+        )
+
+        if attempt < MAX_RETRIES:
+
+            print(
+                "Waiting 10 seconds before retry..."
+            )
+
+            time.sleep(10)
+
+    return False
 
 
 # ============================================================
@@ -142,11 +190,24 @@ def main():
 
     print("==========================================")
     print("3-STOCK FUNDAMENTAL TEST")
-    print("Stocks:", len(stocks))
+    print("==========================================")
+
+    for number, stock in enumerate(
+        stocks,
+        start=1
+    ):
+
+        print(
+            number,
+            ":",
+            stock[0],
+            stock[1]
+        )
+
     print("==========================================")
 
     # --------------------------------------------------------
-    # CLEAR OLD TEST AREA
+    # CLEAR OLD RESULTS
     # --------------------------------------------------------
 
     fundamental_sheet.batch_clear([
@@ -154,11 +215,7 @@ def main():
     ])
 
     # --------------------------------------------------------
-    # MEMORY STORAGE
-    #
-    # IMPORTANT:
-    # We DO NOT write permanent rows 2,3,4
-    # until ALL workers have finished.
+    # STORE COMPLETED RESULTS IN MEMORY
     # --------------------------------------------------------
 
     completed_results = []
@@ -177,42 +234,58 @@ def main():
 
         print("==========================================")
         print(
-            "Processing",
+            "PROCESSING STOCK",
             number,
-            "of",
+            "OF",
             len(stocks)
         )
         print("Stock:", stock_name)
         print("NSE:", nse_code)
         print("==========================================")
 
-        # Put stock into worker input row.
+        # Put stock into the worker's normal input cells.
         fundamental_sheet.update(
-            "A2:B2",
-            [[stock_name, nse_code]],
+            range_name="A2:B2",
+            values=[[stock_name, nse_code]],
             value_input_option="USER_ENTERED"
         )
 
-        # Run original working program.
-        run_worker()
+        time.sleep(3)
+
+        # Run worker with automatic retry.
+        success = run_worker(stock_name)
+
+        if not success:
+
+            print("==========================================")
+            print("WARNING - STOCK FAILED")
+            print("Stock:", stock_name)
+            print("NSE:", nse_code)
+            print("Skipping this stock after retries.")
+            print("==========================================")
+
+            continue
 
         time.sleep(3)
 
-        # Read ONLY the completed worker result.
+        # Read the completed result from row 2.
         result = fundamental_sheet.get(
             "A2:AH2",
             value_render_option="UNFORMATTED_VALUE"
         )
 
         if not result:
-            raise ValueError(
-                "No result returned for "
-                + stock_name
+
+            print(
+                "No result returned for:",
+                stock_name
             )
+
+            continue
 
         completed_row = result[0]
 
-        # Store in Python memory.
+        # Save result in Python memory.
         completed_results.append(
             completed_row
         )
@@ -223,30 +296,47 @@ def main():
         )
 
     # --------------------------------------------------------
-    # NOW WRITE ALL RESULTS AT ONCE
+    # WRITE ALL SUCCESSFUL RESULTS
     # --------------------------------------------------------
 
     print("==========================================")
-    print("Writing final results to rows 2 onward")
+    print(
+        "Writing",
+        len(completed_results),
+        "successful results"
+    )
     print("==========================================")
 
-    end_row = 1 + len(completed_results)
+    if completed_results:
 
-    fundamental_sheet.update(
-        f"A2:AH{end_row}",
-        completed_results,
-        value_input_option="USER_ENTERED"
-    )
+        end_row = 1 + len(completed_results)
 
-    # Remove anything left below the test results.
-    if end_row < 251:
+        fundamental_sheet.update(
+            range_name=f"A2:AH{end_row}",
+            values=completed_results,
+            value_input_option="USER_ENTERED"
+        )
+
+    # --------------------------------------------------------
+    # CLEAR EVERYTHING AFTER THE RESULTS
+    # --------------------------------------------------------
+
+    final_end_row = 1 + len(completed_results)
+
+    if final_end_row < 251:
 
         fundamental_sheet.batch_clear([
-            f"A{end_row + 1}:AH251"
+            f"A{final_end_row + 1}:AH251"
         ])
 
     print("==========================================")
-    print("3-STOCK TEST COMPLETED")
+    print("3-STOCK TEST FINISHED")
+    print(
+        "Successful stocks:",
+        len(completed_results),
+        "of",
+        len(stocks)
+    )
     print("==========================================")
 
 
