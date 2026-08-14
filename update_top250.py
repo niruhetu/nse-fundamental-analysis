@@ -55,6 +55,7 @@ def connect_google_sheet():
 # ============================================================
 
 def get_nifty500_stocks():
+
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -77,6 +78,7 @@ def get_nifty500_stocks():
     stocks = []
 
     for row in reader:
+
         symbol = (
             row.get("Symbol")
             or row.get("SYMBOL")
@@ -93,8 +95,7 @@ def get_nifty500_stocks():
         if symbol:
             stocks.append([
                 company,
-                "NSE:" + symbol,
-                ""
+                "NSE:" + symbol
             ])
 
     if not stocks:
@@ -110,44 +111,103 @@ def get_nifty500_stocks():
 # ============================================================
 
 def update_sheet():
+
     worksheet = connect_google_sheet()
 
     stocks = get_nifty500_stocks()
 
-    # Clear old data below the header.
-    worksheet.batch_clear(["A2:C1000"])
+    # --------------------------------------------------------
+    # CLEAR OLD DATA
+    # --------------------------------------------------------
 
-    # Write the current Nifty 500 universe.
-    worksheet.update(
-        "A2",
-        stocks,
-        value_input_option="USER_ENTERED"
-    )
+    worksheet.batch_clear([
+        "A2:C1000",
+        "E2:G1000"
+    ])
 
-    # Header
+    # --------------------------------------------------------
+    # HEADERS
+    # --------------------------------------------------------
+
     worksheet.update(
         "A1:C1",
         [["Stock Name", "NSE Code", "Market Cap"]]
     )
 
-    # Market-cap formulas.
+    worksheet.update(
+        "E1:G1",
+        [["Stock Name", "NSE Code", "Market Cap"]]
+    )
+
+    # --------------------------------------------------------
+    # WRITE NIFTY 500 SOURCE
+    # --------------------------------------------------------
+
+    source_rows = []
+
+    for company, nse_code in stocks:
+        source_rows.append([
+            company,
+            nse_code,
+            ""
+        ])
+
+    last_source_row = len(source_rows) + 1
+
+    worksheet.update(
+        f"E2:G{last_source_row}",
+        source_rows,
+        value_input_option="USER_ENTERED"
+    )
+
+    # --------------------------------------------------------
+    # GOOGLE FINANCE MARKET CAP
+    # --------------------------------------------------------
+
     formulas = []
 
-    for row in range(2, len(stocks) + 2):
+    for row in range(2, last_source_row + 1):
         formulas.append([
-            f'=IFERROR(GOOGLEFINANCE(B{row},"marketcap"),"")'
+            f'=IFERROR(GOOGLEFINANCE(F{row},"marketcap"),"")'
         ])
 
     worksheet.update(
-        f"C2:C{len(stocks) + 1}",
+        f"G2:G{last_source_row}",
         formulas,
         value_input_option="USER_ENTERED"
     )
 
+    # --------------------------------------------------------
+    # TOP 250 FORMULA
+    # --------------------------------------------------------
+    #
+    # Sort by Market Cap, highest to lowest,
+    # and return only the first 250 stocks.
+    #
+
+    top250_formula = (
+        f'=IFERROR('
+        f'SORTN('
+        f'FILTER(E2:G{last_source_row},'
+        f'G2:G{last_source_row}<>""),'
+        f'250,'
+        f'0,'
+        f'3,'
+        f'FALSE'
+        f'),"")'
+    )
+
+    worksheet.update(
+        "A2",
+        [[top250_formula]],
+        value_input_option="USER_ENTERED"
+    )
+
     print("==========================================")
-    print("TOP 250 STOCKS")
-    print("Nifty 500 universe loaded:", len(stocks))
-    print("Market-cap formulas added.")
+    print("TOP 250 STOCKS UPDATED")
+    print("Nifty 500 source:", len(stocks))
+    print("Top 250 sorted by Market Cap")
+    print("Highest to Lowest")
     print("==========================================")
 
 
