@@ -1,30 +1,22 @@
 import os
 import json
-import requests
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+
+
 # ============================================================
 # SETTINGS
 # ============================================================
 
 SPREADSHEET_ID = "1Z4dAZIKKHKm9bg8i8-OI6Cka_vz3YSGFGp6PykxpnHw"
 SHEET_NAME = "Top 250 Stocks"
+
+
 # ============================================================
 # GOOGLE SHEETS CONNECTION
 # ============================================================
 
 def connect_google_sheet():
-  # ============================================================
-# TEST CONNECTION
-# ============================================================
-
-def main():
-    worksheet = connect_google_sheet()
-    print("Connected to:", worksheet.title)
-
-
-if __name__ == "__main__":
-    main()
     creds_json = os.environ.get("GCP_CREDENTIALS")
 
     if not creds_json:
@@ -48,3 +40,24 @@ if __name__ == "__main__":
     worksheet = spreadsheet.worksheet(SHEET_NAME)
 
     return worksheet
+
+
+# ============================================================
+# TEST CONNECTION
+# ============================================================
+
+def main():
+    worksheet = connect_google_sheet()
+
+    print("==========================================")
+    print("TOP 250 CONNECTION TEST")
+    print("Connected to:", worksheet.title)
+    print("==========================================")
+
+
+# ============================================================
+# START
+# ============================================================
+
+if __name__ == "__main__":
+    main()
