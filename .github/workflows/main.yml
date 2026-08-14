@@ -20,7 +20,7 @@ jobs:
         run: |
           pip install gspread oauth2client nse-xbrl
 
-            - name: Run Fundamental Analysis
+                 - name: Run Fundamental Analysis
         env:
           GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
         run: |
