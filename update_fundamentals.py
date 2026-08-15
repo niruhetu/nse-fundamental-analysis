@@ -295,9 +295,28 @@ def main():
     )
 
     completed_results = []
+    failed_stocks = []
 
     # --------------------------------------------------------
-    # PROCESS STOCKS
+    # PLACEHOLDER FOR A STOCK WHOSE FUNDAMENTAL DATA FAILED
+    # --------------------------------------------------------
+    # Keep every Top-250 stock in the final sheet.
+    # A failed/missing fundamental fetch must NOT reduce
+    # the final list from 250 to 247 (or any smaller number).
+    def make_unavailable_row(stock_name, nse_code):
+        return [
+            stock_name,                 # A Stock Name
+            nse_code,                   # B NSE Code
+            "",                         # C Overall Score
+            "",                         # D Indication
+            "DATA NOT AVAILABLE",       # E Latest Result
+            "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",  # F:AB
+            "DATA NOT AVAILABLE",       # AC Fundamental Signal
+            "", "", "", "", ""          # AD:AH
+        ]
+
+    # --------------------------------------------------------
+    # PROCESS ALL 250 STOCKS
     # --------------------------------------------------------
 
     for number, stock in enumerate(
@@ -350,11 +369,27 @@ def main():
 
             print("==========================================")
             print(
-                "SKIPPING FAILED STOCK:",
+                "FUNDAMENTAL DATA FAILED:",
                 stock_name
+            )
+            print(
+                "Keeping stock in Top 250 with DATA NOT AVAILABLE."
             )
             print("==========================================")
 
+            completed_results.append(
+                make_unavailable_row(
+                    stock_name,
+                    nse_code
+                )
+            )
+
+            failed_stocks.append(
+                stock_name
+            )
+
+            # Continue to the next stock WITHOUT removing
+            # this stock from the final 250-row output.
             continue
 
         time.sleep(3)
@@ -375,9 +410,30 @@ def main():
                 stock_name
             )
 
+            completed_results.append(
+                make_unavailable_row(
+                    stock_name,
+                    nse_code
+                )
+            )
+
+            failed_stocks.append(
+                stock_name
+            )
+
             continue
 
         completed_row = result[0]
+
+        # Safety check: if the worker returned a short row,
+        # pad it to exactly A:AH (34 columns).
+        if len(completed_row) < 34:
+            completed_row = (
+                completed_row
+                + [""] * (34 - len(completed_row))
+            )
+        elif len(completed_row) > 34:
+            completed_row = completed_row[:34]
 
         completed_results.append(
             completed_row
@@ -411,10 +467,14 @@ def main():
 
     print("==========================================")
     print(
-        "SUCCESSFUL RESULTS:",
+        "FINAL ROWS WRITTEN:",
         len(completed_results),
         "OF",
         len(stocks)
+    )
+    print(
+        "FAILED / DATA NOT AVAILABLE:",
+        len(failed_stocks)
     )
     print("==========================================")
 
@@ -450,13 +510,22 @@ def main():
     print("==========================================")
     print("FUNDAMENTAL ANALYSIS FINISHED")
     print(
-        "Successful:",
+        "Final rows:",
         len(completed_results)
     )
     print(
         "Requested:",
         len(stocks)
     )
+    print(
+        "Failed / DATA NOT AVAILABLE:",
+        len(failed_stocks)
+    )
+
+    if failed_stocks:
+        print("Stocks kept with DATA NOT AVAILABLE:")
+        for failed_stock in failed_stocks:
+            print("-", failed_stock)
     print("==========================================")
 
 
