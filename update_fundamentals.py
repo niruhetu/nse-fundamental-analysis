@@ -297,22 +297,12 @@ def main():
     completed_results = []
     failed_stocks = []
 
-    # --------------------------------------------------------
-    # PLACEHOLDER FOR A STOCK WHOSE FUNDAMENTAL DATA FAILED
-    # --------------------------------------------------------
-    # Keep every Top-250 stock in the final sheet.
-    # A failed/missing fundamental fetch must NOT reduce
-    # the final list from 250 to 247 (or any smaller number).
+    # Keep every Top-250 stock even when NSE fundamental data fails.
     def make_unavailable_row(stock_name, nse_code):
         return [
-            stock_name,                 # A Stock Name
-            nse_code,                   # B NSE Code
-            "",                         # C Overall Score
-            "",                         # D Indication
-            "DATA NOT AVAILABLE",       # E Latest Result
-            "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",  # F:AB
-            "DATA NOT AVAILABLE",       # AC Fundamental Signal
-            "", "", "", "", ""          # AD:AH
+            stock_name, nse_code, "", "", "DATA NOT AVAILABLE",
+            "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "DATA NOT AVAILABLE", "", "", "", "", ""
         ]
 
     # --------------------------------------------------------
@@ -368,28 +358,14 @@ def main():
         if not success:
 
             print("==========================================")
-            print(
-                "FUNDAMENTAL DATA FAILED:",
-                stock_name
-            )
-            print(
-                "Keeping stock in Top 250 with DATA NOT AVAILABLE."
-            )
+            print("FUNDAMENTAL DATA FAILED:", stock_name)
+            print("Keeping stock with DATA NOT AVAILABLE.")
             print("==========================================")
 
             completed_results.append(
-                make_unavailable_row(
-                    stock_name,
-                    nse_code
-                )
+                make_unavailable_row(stock_name, nse_code)
             )
-
-            failed_stocks.append(
-                stock_name
-            )
-
-            # Continue to the next stock WITHOUT removing
-            # this stock from the final 250-row output.
+            failed_stocks.append(stock_name)
             continue
 
         time.sleep(3)
@@ -405,39 +381,23 @@ def main():
 
         if not result:
 
-            print(
-                "No result returned for:",
-                stock_name
-            )
+            print("No result returned for:", stock_name)
 
             completed_results.append(
-                make_unavailable_row(
-                    stock_name,
-                    nse_code
-                )
+                make_unavailable_row(stock_name, nse_code)
             )
-
-            failed_stocks.append(
-                stock_name
-            )
-
+            failed_stocks.append(stock_name)
             continue
 
         completed_row = result[0]
 
-        # Safety check: if the worker returned a short row,
-        # pad it to exactly A:AH (34 columns).
+        # Always keep exactly 34 columns (A:AH).
         if len(completed_row) < 34:
-            completed_row = (
-                completed_row
-                + [""] * (34 - len(completed_row))
-            )
+            completed_row += [""] * (34 - len(completed_row))
         elif len(completed_row) > 34:
             completed_row = completed_row[:34]
 
-        completed_results.append(
-            completed_row
-        )
+        completed_results.append(completed_row)
 
         print(
             "Stored result:",
@@ -467,14 +427,10 @@ def main():
 
     print("==========================================")
     print(
-        "FINAL ROWS WRITTEN:",
+        "SUCCESSFUL RESULTS:",
         len(completed_results),
         "OF",
         len(stocks)
-    )
-    print(
-        "FAILED / DATA NOT AVAILABLE:",
-        len(failed_stocks)
     )
     print("==========================================")
 
@@ -489,6 +445,94 @@ def main():
             f"A2:AH{end_row}",
             completed_results
         )
+
+    # ========================================================
+    # RESTORE GOOGLE SHEETS FORMULAS
+    # ========================================================
+    # These formulas are recreated after every GitHub run because
+    # A2:AH251 is cleared before processing.
+
+    formula_end_row = 1 + len(stocks)
+
+    def formula_column(builder):
+        return [[builder(r)] for r in range(2, formula_end_row + 1)]
+
+    # O = P/E
+    pe = formula_column(
+        lambda r: f'=IF(A{r}="","",IFERROR(GOOGLEFINANCE(B{r},"price")/Q{r},"DATA NOT AVAILABLE"))'
+    )
+
+    # P = P/B
+    pb = formula_column(
+        lambda r: f'=IF(A{r}="","",IFERROR(GOOGLEFINANCE(B{r},"price")/R{r},"DATA NOT AVAILABLE"))'
+    )
+
+    # AA = Quarterly Sales Growth
+    aa = formula_column(
+        lambda r: f'=IF(A{r}="","",IFERROR(INDEX(\'Quarterly Results\'!F:F,MATCH(SUBSTITUTE(B{r},"NSE:",""),\'Quarterly Results\'!A:A,0)),"DATA NOT AVAILABLE"))'
+    )
+
+    # AB = Quarterly Profit Growth
+    ab = formula_column(
+        lambda r: f'=IF(A{r}="","",IFERROR(INDEX(\'Quarterly Results\'!H:H,MATCH(SUBSTITUTE(B{r},"NSE:",""),\'Quarterly Results\'!A:A,0)),"DATA NOT AVAILABLE"))'
+    )
+
+    # AD = Business Quality
+    ad = formula_column(
+        lambda r: (
+            f'=IF(A{r}="","",IF(COUNT(J{r}:N{r},X{r})=0,"DATA NOT AVAILABLE",'
+            f'IF(ISNUMBER(J{r}),IF(J{r}>20,5,IF(J{r}>=15,4,IF(J{r}>=10,2,0))),0)+'
+            f'IF(ISNUMBER(K{r}),IF(K{r}>20,5,IF(K{r}>=15,4,IF(K{r}>=10,2,0))),0)+'
+            f'IF(ISNUMBER(L{r}),IF(L{r}<0.5,5,IF(L{r}<=1,4,IF(L{r}<=2,2,0))),0)+'
+            f'IF(ISNUMBER(M{r}),IF(M{r}>20,5,IF(M{r}>=12,4,IF(M{r}>=5,2,0))),0)+'
+            f'IF(ISNUMBER(N{r}),IF(N{r}>15,5,IF(N{r}>=10,4,IF(N{r}>=5,2,0))),0)+'
+            f'IF(ISNUMBER(X{r}),IF(X{r}>5,5,IF(X{r}>=3,4,IF(X{r}>=2,2,0))),0)))'
+        )
+    )
+
+    # AE = Result Momentum
+    ae = formula_column(
+        lambda r: (
+            f'=IF(A{r}="","",IF(COUNT(I{r},AA{r}:AB{r})=0,"DATA NOT AVAILABLE",'
+            f'IF(ISNUMBER(AA{r}),IF(AA{r}>20,5,IF(AA{r}>=10,4,IF(AA{r}>=0,2,0))),0)+'
+            f'IF(ISNUMBER(AB{r}),IF(AB{r}>20,5,IF(AB{r}>=10,4,IF(AB{r}>=0,2,0))),0)+'
+            f'IF(ISNUMBER(I{r}),IF(I{r}>20,5,IF(I{r}>=10,4,IF(I{r}>=0,2,0))),0)))'
+        )
+    )
+
+    # AF = Valuation Score
+    af = formula_column(
+        lambda r: (
+            f'=IF(A{r}="","",IF(COUNT(O{r}:P{r})=0,"DATA NOT AVAILABLE",'
+            f'IF(ISNUMBER(O{r}),IF(O{r}<0,0,IF(O{r}<15,5,IF(O{r}<=25,4,IF(O{r}<=40,2,0)))),0)+'
+            f'IF(ISNUMBER(P{r}),IF(P{r}<1,5,IF(P{r}<=2,4,IF(P{r}<=4,2,0))),0)))'
+        )
+    )
+
+    # AG = Overall Fundamental Score
+    ag = formula_column(
+        lambda r: f'=IF(A{r}="","",IF(COUNT(AD{r}:AF{r})=0,"DATA NOT AVAILABLE",ROUND((AD{r}/30*40)+(AE{r}/15*35)+(AF{r}/10*25),1)))'
+    )
+
+    # AH = Final Indication
+    ah = formula_column(
+        lambda r: (
+            f'=IF(A{r}="","",IF(NOT(ISNUMBER(AG{r})),"DATA NOT AVAILABLE",'
+            f'IF(AG{r}>=75,"STRONG BUY",IF(AG{r}>=60,"BUY",IF(AG{r}>=45,"HOLD",IF(AG{r}>=30,"AVOID","STRONG AVOID")))))'
+        )
+    )
+
+    safe_update(fundamental_sheet, f"O2:O{formula_end_row}", pe)
+    safe_update(fundamental_sheet, f"P2:P{formula_end_row}", pb)
+    safe_update(fundamental_sheet, f"AA2:AA{formula_end_row}", aa)
+    safe_update(fundamental_sheet, f"AB2:AB{formula_end_row}", ab)
+    safe_update(fundamental_sheet, f"AD2:AD{formula_end_row}", ad)
+    safe_update(fundamental_sheet, f"AE2:AE{formula_end_row}", ae)
+    safe_update(fundamental_sheet, f"AF2:AF{formula_end_row}", af)
+    safe_update(fundamental_sheet, f"AG2:AG{formula_end_row}", ag)
+    safe_update(fundamental_sheet, f"AH2:AH{formula_end_row}", ah)
+
+    print("FORMULAS RESTORED: O, P, AA, AB, AD:AH")
 
     # --------------------------------------------------------
     # CLEAR REMAINING OLD AREA
@@ -521,7 +565,6 @@ def main():
         "Failed / DATA NOT AVAILABLE:",
         len(failed_stocks)
     )
-
     if failed_stocks:
         print("Stocks kept with DATA NOT AVAILABLE:")
         for failed_stock in failed_stocks:
