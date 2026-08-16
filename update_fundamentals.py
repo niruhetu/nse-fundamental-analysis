@@ -510,15 +510,28 @@ def main():
     )
 
     # AG = Overall Fundamental Score
+    # Ignore DATA NOT AVAILABLE text instead of producing #VALUE!.
     ag = formula_column(
-        lambda r: f'=IF(A{r}="","",IF(COUNT(AD{r}:AF{r})=0,"DATA NOT AVAILABLE",ROUND((AD{r}/30*40)+(AE{r}/15*35)+(AF{r}/10*25),1)))'
+        lambda r: (
+            f'=IF(A{r}="","",'
+            f'IF(COUNT(AD{r}:AF{r})=0,"DATA NOT AVAILABLE",'
+            f'ROUND('
+            f'IF(ISNUMBER(AD{r}),AD{r}/30*40,0)+'
+            f'IF(ISNUMBER(AE{r}),AE{r}/15*35,0)+'
+            f'IF(ISNUMBER(AF{r}),AF{r}/10*25,0)'
+            f',1)))'
+        )
     )
 
     # AH = Final Indication
     ah = formula_column(
         lambda r: (
-            f'=IF(A{r}="","",IF(NOT(ISNUMBER(AG{r})),"DATA NOT AVAILABLE",'
-            f'IF(AG{r}>=75,"STRONG BUY",IF(AG{r}>=60,"BUY",IF(AG{r}>=45,"HOLD",IF(AG{r}>=30,"AVOID","STRONG AVOID")))))'
+            f'=IF(A{r}="","",'
+            f'IF(NOT(ISNUMBER(AG{r})),"DATA NOT AVAILABLE",'
+            f'IF(AG{r}>=75,"STRONG BUY",'
+            f'IF(AG{r}>=60,"BUY",'
+            f'IF(AG{r}>=45,"HOLD",'
+            f'IF(AG{r}>=30,"AVOID","STRONG AVOID"))))))'
         )
     )
 
